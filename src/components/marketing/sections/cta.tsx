@@ -10,7 +10,7 @@ export function CTA() {
       <div className="container-wide">
         <Reveal>
           <div className="relative overflow-hidden rounded-3xl border border-border bg-card/60 px-8 py-20 text-center">
-            <div className="pointer-events-none absolute inset-0 bg-grid-pattern bg-[size:48px_48px] opacity-[0.1]" />
+            <div className="pointer-events-none absolute inset-0 bg-dot-pattern bg-[size:24px_24px] opacity-[0.3]" />
             <div className="pointer-events-none absolute left-1/2 top-0 h-56 w-[600px] -translate-x-1/2 rounded-full bg-primary/[0.07] blur-[120px]" />
 
             <div className="relative">

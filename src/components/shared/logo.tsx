@@ -15,7 +15,7 @@ export function Logo({
       href={href}
       className={cn("group flex items-center gap-2.5", className)}
     >
-      <span className="relative flex h-8 w-8 items-center justify-center rounded-lg bg-brand-gradient shadow-lg shadow-primary/30">
+      <span className="relative flex h-8 w-8 items-center justify-center rounded-lg bg-brand-gradient shadow-lg shadow-primary/25">
         <svg
           viewBox="0 0 24 24"
           fill="none"

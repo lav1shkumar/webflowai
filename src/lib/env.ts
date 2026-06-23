@@ -18,12 +18,9 @@ function firstNonEmpty(...keys: string[]): string | undefined {
 }
 
 export const env = {
-  // AI — accept the standard OpenAI var or the Azure-specific one, whichever
-  // is non-empty (ignores blank placeholders).
-  openaiApiKey: firstNonEmpty("OPENAI_API_KEY", "AZURE_OPENAI_API_KEY"),
-  aiModel: optional("WEBFLOWAI_MODEL") ?? "gpt-4o-mini",
-  // Azure OpenAI resource name (the part before .openai.azure.com).
-  azureResourceName: optional("AZURE_RESOURCE_NAME") ?? "genai-lav1sh-resource",
+  // AI — Google Vertex AI (express-mode API key).
+  vertexApiKey: firstNonEmpty("GOOGLE_VERTEX_API_KEY"),
+  aiModel: optional("WEBFLOWAI_MODEL") ?? "gemini-2.5-flash",
 
   // Clerk
   clerkPublishableKey: optional("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY"),
@@ -40,7 +37,7 @@ export const env = {
 } as const;
 
 /** Whether the AI backend is configured. Used to gate live calls vs. demo mode. */
-export const isAiConfigured = Boolean(env.openaiApiKey);
+export const isAiConfigured = Boolean(env.vertexApiKey);
 /** Whether Clerk is configured. Lets the app render in a public demo mode. */
 export const isAuthConfigured = Boolean(
   env.clerkPublishableKey && env.clerkSecretKey,

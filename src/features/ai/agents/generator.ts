@@ -1,7 +1,8 @@
-import { streamText } from "ai";
+import { streamText, stepCountIs } from "ai";
 import { getModel, isAiConfigured, modelDefaults } from "../model";
 import { prompts } from "../prompts";
 import { createWorkspaceTools } from "../tools";
+import { formatIssues } from "../verifier";
 import { languageFromPath } from "../../webcontainer/files";
 import type { Agent, AgentContext, FileChange } from "../types";
 
@@ -15,16 +16,23 @@ export const generatorAgent: Agent<FileChange[]> = {
   description: "Writes complete, type-safe code for the planned files.",
 
   async run(ctx: AgentContext) {
+    const fixMode = Boolean(
+      ctx.verification && !ctx.verification.ok,
+    );
     ctx.emit({ type: "phase", agent: "generator", phase: "running" });
     ctx.emit({
       type: "log",
       agent: "generator",
-      message: "Generating source files…",
+      message: fixMode
+        ? "Fixing issues found during verification…"
+        : "Generating source files…",
     });
 
     try {
       const changes = isAiConfigured
-        ? await streamGenerated(ctx)
+        ? fixMode
+          ? await streamFix(ctx)
+          : await streamGenerated(ctx)
         : scaffoldChanges(ctx);
 
       for (const change of changes) {
@@ -43,12 +51,36 @@ export const generatorAgent: Agent<FileChange[]> = {
   },
 };
 
+/** Fix pass: regenerate only the files needed to resolve verifier errors. */
+async function streamFix(ctx: AgentContext): Promise<FileChange[]> {
+  const report = ctx.verification
+    ? formatIssues(ctx.verification)
+    : "(no issues)";
+  const result = streamText({
+    model: getModel(),
+    prompt: prompts.generatorFix(ctx, report),
+    tools: createWorkspaceTools(ctx, "generator"),
+    stopWhen: stepCountIs(8),
+    abortSignal: ctx.signal,
+    ...modelDefaults,
+  });
+
+  let buffer = "";
+  for await (const delta of result.textStream) {
+    buffer += delta;
+    ctx.emit({ type: "token", agent: "generator", text: delta });
+  }
+  const usage = await result.usage;
+  ctx.usage.tokens += usage?.totalTokens ?? 0;
+  return parseFileBlocks(buffer, ctx.files);
+}
+
 async function streamGenerated(ctx: AgentContext): Promise<FileChange[]> {
   const result = streamText({
     model: getModel(),
     prompt: prompts.generator(ctx),
     tools: createWorkspaceTools(ctx, "generator"),
-    maxSteps: 8,
+    stopWhen: stepCountIs(8),
     abortSignal: ctx.signal,
     ...modelDefaults,
   });

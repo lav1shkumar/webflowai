@@ -15,6 +15,7 @@ export type AgentKind =
   | "architect"
   | "generator"
   | "file-operation"
+  | "verifier"
   | "reviewer";
 
 export type AgentPhase =
@@ -75,6 +76,28 @@ export interface ReviewIssue {
   message: string;
 }
 
+/**
+ * A single problem found by the deterministic Verifier — a real, mechanical
+ * defect (syntax error, broken import, invalid JSON) rather than an opinion.
+ */
+export interface VerificationIssue {
+  /** "error" blocks the turn and triggers a fix pass; "warning" is advisory. */
+  severity: "error" | "warning";
+  /** Category — used to group/explain issues to the fix pass. */
+  kind: "syntax" | "import" | "json" | "dependency" | "config";
+  path: string;
+  message: string;
+  line?: number;
+}
+
+/** Result of the deterministic verification pass over the workspace files. */
+export interface VerificationResult {
+  ok: boolean;
+  issues: VerificationIssue[];
+  /** Number of files inspected. */
+  checked: number;
+}
+
 /** A tool invocation surfaced to the UI (e.g. the agent reading a file). */
 export type ToolName = "list_files" | "read_file" | "search_files";
 
@@ -87,6 +110,7 @@ export type AgentEvent =
   | { type: "plan"; plan: ExecutionPlan }
   | { type: "blueprint"; blueprint: ProjectBlueprint }
   | { type: "review"; review: ReviewResult }
+  | { type: "verification"; result: VerificationResult }
   | {
       type: "tool";
       agent: AgentKind;
@@ -108,6 +132,8 @@ export interface AgentContext {
   plan?: ExecutionPlan;
   blueprint?: ProjectBlueprint;
   changes: FileChange[];
+  /** Latest deterministic verification result for this turn. */
+  verification?: VerificationResult;
   review?: ReviewResult;
   /** Running total of model tokens consumed across all agents this turn. */
   usage: { tokens: number };

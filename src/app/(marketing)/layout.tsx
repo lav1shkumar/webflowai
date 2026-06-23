@@ -7,7 +7,7 @@ export default function MarketingLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="relative min-h-screen bg-background">
+    <div className="relative min-h-screen bg-background bg-dotted">
       <MarketingNav />
       <main>{children}</main>
       <MarketingFooter />

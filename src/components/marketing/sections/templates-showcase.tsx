@@ -29,7 +29,7 @@ export function TemplatesShowcase() {
                   <div
                     className={`relative h-32 bg-gradient-to-br ${template.gradient}`}
                   >
-                    <div className="absolute inset-0 bg-grid-pattern bg-[size:24px_24px] opacity-20" />
+                    <div className="absolute inset-0 bg-dot-pattern bg-[size:20px_20px] opacity-25" />
                     <div className="absolute bottom-3 left-4 flex h-11 w-11 items-center justify-center rounded-xl bg-black/30 backdrop-blur-md ring-1 ring-white/20">
                       <Icon className="h-5 w-5 text-white" />
                     </div>

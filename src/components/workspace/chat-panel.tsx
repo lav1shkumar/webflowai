@@ -5,8 +5,10 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   ArrowUp,
+  BadgeCheck,
   Brain,
   Check,
+  Clock,
   Code2,
   Coins,
   Compass,
@@ -228,12 +230,23 @@ function MessageBubble({ message }: { message: ChatMessage }) {
           </p>
         )}
 
-        {typeof message.credits === "number" && message.credits > 0 && (
-          <p className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-            <Coins className="h-3 w-3" />
-            {message.credits} credit{message.credits === 1 ? "" : "s"}
-          </p>
-        )}
+        {(typeof message.credits === "number" && message.credits > 0) ||
+        typeof message.durationMs === "number" ? (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            {typeof message.durationMs === "number" && (
+              <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                <Clock className="h-3 w-3" />
+                {formatDuration(message.durationMs)}
+              </span>
+            )}
+            {typeof message.credits === "number" && message.credits > 0 && (
+              <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                <Coins className="h-3 w-3" />
+                {message.credits} credit{message.credits === 1 ? "" : "s"}
+              </span>
+            )}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -245,6 +258,7 @@ const PIPELINE: { agent: AgentKind; label: string; Icon: LucideIcon }[] = [
   { agent: "architect", label: "Designing architecture", Icon: Compass },
   { agent: "generator", label: "Generating code", Icon: Code2 },
   { agent: "file-operation", label: "Applying changes", Icon: FileCheck2 },
+  { agent: "verifier", label: "Verifying", Icon: BadgeCheck },
   { agent: "reviewer", label: "Reviewing", Icon: ShieldCheck },
 ];
 
@@ -354,4 +368,14 @@ function AgentTimeline({
 
 function dedupe(items: string[]): string[] {
   return Array.from(new Set(items));
+}
+
+/** Human-friendly elapsed time, e.g. "1.2s", "850ms", "2m 5s". */
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  const totalSeconds = ms / 1000;
+  if (totalSeconds < 60) return `${totalSeconds.toFixed(1)}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = Math.round(totalSeconds % 60);
+  return `${minutes}m ${seconds}s`;
 }

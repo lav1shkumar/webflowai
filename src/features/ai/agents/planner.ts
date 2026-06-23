@@ -1,4 +1,4 @@
-import { generateText } from "ai";
+import { generateText, stepCountIs } from "ai";
 import { getModel, isAiConfigured, modelDefaults } from "../model";
 import { prompts } from "../prompts";
 import { createWorkspaceTools } from "../tools";
@@ -42,7 +42,7 @@ async function generatePlan(ctx: AgentContext): Promise<ExecutionPlan> {
     model: getModel(),
     prompt: prompts.planner(ctx),
     tools: createWorkspaceTools(ctx, "planner"),
-    maxSteps: 6,
+    stopWhen: stepCountIs(6),
     abortSignal: ctx.signal,
     ...modelDefaults,
   });

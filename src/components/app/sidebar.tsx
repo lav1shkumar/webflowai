@@ -31,7 +31,7 @@ export function AppSidebar() {
   );
 
   return (
-    <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-card/30 p-4 md:flex">
+    <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-card/50 p-4 md:flex">
       <div className="px-2 py-2">
         <Logo />
       </div>

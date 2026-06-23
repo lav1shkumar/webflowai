@@ -3,9 +3,11 @@ export interface Template {
   name: string;
   description: string;
   category: "Starter" | "AI" | "Business" | "Commerce" | "Internal";
-  /** Tailwind gradient used for the card art. */
+  /** Tailwind gradient used for the card art (marketing showcase). */
   gradient: string;
-  icon: string; // lucide icon name
+  icon: string; // lucide icon name (fallback / marketing)
+  /** Emoji shown on the app template cards. */
+  emoji: string;
   tags: string[];
   /** Seed prompt fed to the generation pipeline. */
   prompt: string;
@@ -14,90 +16,110 @@ export interface Template {
 
 export const templates: Template[] = [
   {
-    id: "saas-starter",
-    name: "SaaS Starter",
+    id: "netflix-clone",
+    name: "Build a Netflix clone",
     description:
-      "Auth, billing, dashboard, and marketing pages wired together. The fastest way to a paid product.",
+      "A streaming homepage with hero banner, content rows, and a video detail page.",
     category: "Starter",
-    gradient: "from-indigo-500 to-blue-600",
-    icon: "Rocket",
-    tags: ["Auth", "Billing", "Dashboard"],
+    gradient: "from-rose-500 to-red-700",
+    icon: "LayoutTemplate",
+    emoji: "🎬",
+    tags: ["Streaming", "Hero", "Rows"],
     prompt:
-      "Build a SaaS starter with authentication, subscription billing, a dashboard, and a marketing landing page.",
+      "Build a Netflix-style streaming homepage with a hero banner, horizontally scrolling content rows, and a video detail page.",
     popular: true,
   },
   {
-    id: "ai-app",
-    name: "AI App",
+    id: "admin-dashboard",
+    name: "Build an admin dashboard",
     description:
-      "Streaming chat UI, tool calling, and a usage-metered backend ready for your model of choice.",
-    category: "AI",
-    gradient: "from-sky-500 to-indigo-600",
-    icon: "Sparkles",
-    tags: ["Streaming", "RAG", "Credits"],
+      "Charts, KPIs, and data tables with filtering and a clean sidebar layout.",
+    category: "Business",
+    gradient: "from-blue-600 to-slate-700",
+    icon: "BarChart3",
+    emoji: "📦",
+    tags: ["Charts", "KPIs", "Tables"],
     prompt:
-      "Build an AI application with a streaming chat interface, document upload, and credit-based usage metering.",
+      "Build an admin dashboard with KPI cards, charts, filterable data tables, and a sidebar navigation.",
     popular: true,
   },
   {
-    id: "crm",
-    name: "CRM",
+    id: "kanban-board",
+    name: "Build a kanban board",
     description:
-      "Contacts, pipelines, and activity timelines with a polished kanban board and filters.",
+      "Drag-and-drop columns, cards, labels, and activity — a Trello-style board.",
     category: "Business",
     gradient: "from-emerald-600 to-teal-700",
     icon: "Users",
-    tags: ["Pipeline", "Kanban", "Contacts"],
+    emoji: "📋",
+    tags: ["Drag & drop", "Cards", "Columns"],
     prompt:
-      "Build a CRM with contacts, deal pipelines, a kanban board, and activity timelines.",
+      "Build a Trello-style kanban board with draggable cards, multiple columns, labels, and an activity feed.",
   },
   {
-    id: "dashboard",
-    name: "Analytics Dashboard",
+    id: "file-manager",
+    name: "Build a file manager",
     description:
-      "Charts, KPIs, and data tables with filtering, ready to plug into your warehouse.",
-    category: "Business",
-    gradient: "from-blue-600 to-cyan-700",
-    icon: "BarChart3",
-    tags: ["Charts", "KPIs", "Tables"],
+      "Folders, file grid, upload, and preview with breadcrumb navigation.",
+    category: "Internal",
+    gradient: "from-amber-500 to-yellow-600",
+    icon: "Wrench",
+    emoji: "📁",
+    tags: ["Folders", "Upload", "Preview"],
     prompt:
-      "Build an analytics dashboard with KPI cards, charts, and filterable data tables.",
+      "Build a file manager with a folder tree, file grid, drag-and-drop upload, preview pane, and breadcrumb navigation.",
   },
   {
-    id: "ecommerce",
-    name: "E-commerce",
+    id: "youtube-clone",
+    name: "Build a YouTube clone",
     description:
-      "Storefront, cart, and checkout with product management and order tracking.",
+      "A video grid homepage, watch page with player, and a channel layout.",
+    category: "Starter",
+    gradient: "from-red-500 to-rose-700",
+    icon: "LayoutTemplate",
+    emoji: "📺",
+    tags: ["Video", "Grid", "Player"],
+    prompt:
+      "Build a YouTube-style app with a video grid homepage, a watch page with a player and comments, and a channel layout.",
+  },
+  {
+    id: "store-page",
+    name: "Build a store page",
+    description:
+      "Product catalog, cart, and checkout with product detail pages.",
     category: "Commerce",
-    gradient: "from-amber-600 to-orange-700",
+    gradient: "from-yellow-500 to-amber-600",
     icon: "ShoppingBag",
+    emoji: "🛍️",
     tags: ["Storefront", "Cart", "Checkout"],
     prompt:
-      "Build an e-commerce store with a product catalog, shopping cart, and checkout flow.",
+      "Build an e-commerce store page with a product catalog, product detail pages, a shopping cart, and a checkout flow.",
   },
   {
-    id: "landing-page",
-    name: "Landing Page",
+    id: "airbnb-clone",
+    name: "Build an Airbnb clone",
     description:
-      "A high-converting marketing page with hero, features, pricing, and CTA sections.",
-    category: "Starter",
-    gradient: "from-rose-600 to-orange-700",
+      "Listing grid, map view, detail pages, and a booking flow with dates.",
+    category: "Commerce",
+    gradient: "from-pink-500 to-rose-600",
     icon: "LayoutTemplate",
-    tags: ["Marketing", "Hero", "Pricing"],
+    emoji: "🏠",
+    tags: ["Listings", "Map", "Booking"],
     prompt:
-      "Build a high-converting landing page with a hero, features, testimonials, pricing, and a call to action.",
+      "Build an Airbnb-style app with a listings grid, a map view, listing detail pages, and a date-based booking flow.",
   },
   {
-    id: "internal-tool",
-    name: "Internal Tool",
+    id: "spotify-clone",
+    name: "Build a Spotify clone",
     description:
-      "Admin CRUD, role-based access, and audit logs for operations teams.",
-    category: "Internal",
-    gradient: "from-slate-600 to-zinc-700",
-    icon: "Wrench",
-    tags: ["Admin", "RBAC", "Audit"],
+      "Sidebar playlists, a main track view, and a sticky player bar.",
+    category: "AI",
+    gradient: "from-emerald-500 to-green-700",
+    icon: "Sparkles",
+    emoji: "🎵",
+    tags: ["Playlists", "Player", "Sidebar"],
     prompt:
-      "Build an internal admin tool with CRUD management, role-based access control, and audit logs.",
+      "Build a Spotify-style music player with a sidebar for playlists, a main view for songs and details, and a sticky bottom player bar.",
   },
 ];
 

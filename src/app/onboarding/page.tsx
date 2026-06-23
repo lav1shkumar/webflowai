@@ -52,7 +52,7 @@ export default function OnboardingPage() {
 
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden p-6">
-      <div className="pointer-events-none absolute inset-0 bg-grid-pattern bg-[size:48px_48px] opacity-[0.1]" />
+      <div className="pointer-events-none absolute inset-0 bg-dot-pattern bg-[size:24px_24px] opacity-[0.2]" />
       <div className="pointer-events-none absolute left-1/2 top-1/4 h-72 w-[520px] -translate-x-1/2 rounded-full bg-primary/[0.05] blur-[130px]" />
 
       <div className="relative w-full max-w-lg">

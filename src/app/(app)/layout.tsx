@@ -11,7 +11,7 @@ export default async function AppLayout({
 
   return (
     <ViewerProvider viewer={viewer}>
-      <div className="flex h-screen overflow-hidden bg-background">
+      <div className="flex h-screen overflow-hidden bg-background bg-dotted-subtle">
         <AppSidebar />
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {children}

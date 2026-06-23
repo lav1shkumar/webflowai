@@ -63,7 +63,10 @@ export async function POST(request: Request) {
   }
 
   const encoder = new TextEncoder();
-  const orchestrator = new Orchestrator({ maxReviewRetries: 1 });
+  const orchestrator = new Orchestrator({
+    maxReviewRetries: 1,
+    maxFixAttempts: 2,
+  });
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {

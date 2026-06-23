@@ -33,7 +33,15 @@ export const prompts = {
     return `${PRODUCT_CONTEXT}
 
 ROLE: Planner Agent.
-Decompose the user's request into a minimal, ordered execution plan, and classify intent precisely. If the codebase already exists and the user asks for a change, the intent is "modify"/"feature"/"refactor"/"debug" — NOT "create". Reserve "create" for brand-new projects with no files.
+Think carefully and decompose the user's request into a deliberate, minimal, ordered execution plan, and classify intent precisely. Take the time to reason about edge cases, data flow, and what "done" looks like before writing the plan.
+
+Before planning, inspect the codebase with the tools when helpful: read entry files and any modules the request touches, so the plan reflects what actually exists. If the codebase already exists and the user asks for a change, the intent is "modify"/"feature"/"refactor"/"debug" — NOT "create". Reserve "create" for brand-new projects with no files.
+
+A good plan:
+- States the concrete end goal in one sentence (the "summary").
+- Breaks work into small, verifiable steps with clear ownership (which agent does each).
+- Calls out the specific files likely to be created or changed.
+- Orders steps by dependency so each builds on the last.
 
 ${TOOLS_NOTICE}
 
@@ -131,6 +139,36 @@ Rules:
 - The path MUST be on the same line as the opening fence, prefixed with \`path=\`.
 - Re-emit the FULL contents of every file you change.
 - Emit ONLY changed/new/deleted files. Output nothing else.`;
+  },
+
+  /**
+   * Fix-pass prompt. Given the concrete defects found by the deterministic
+   * verifier, instruct the model to make the smallest set of edits that
+   * resolves every blocking issue — nothing more.
+   */
+  generatorFix(ctx: AgentContext, issueReport: string): string {
+    return `${PRODUCT_CONTEXT}
+
+ROLE: Code Generator Agent — FIX PASS.
+A deterministic verifier inspected the code you just produced and found real, blocking defects. Fix EVERY error below with the smallest possible changes. Do not redesign, refactor, or add features — only repair the listed problems and anything strictly required to make them correct (e.g. create a file an import points to, add a missing dependency to package.json, close a broken block).
+
+VERIFIER FINDINGS:
+${issueReport}
+
+How to fix common cases:
+- "Import '…' does not resolve": either create the missing target file with real, working contents, or correct the import path to an existing file.
+- "Invalid JSON" / "package.json must be…": re-emit the whole file as valid JSON.
+- "not in package.json dependencies": add the package (with a sensible version range) to package.json, or remove the unused import.
+- syntax errors: re-emit the complete, corrected file.
+
+${TOOLS_NOTICE}
+
+${buildCodebaseContext(ctx.files, ctx.prompt)}
+
+Original user request (for intent only — do NOT expand scope):
+"""${ctx.prompt}"""
+
+OUTPUT FORMAT — strict. Output ONLY fenced file blocks for the files you change or create, each with an info string of the language followed by \`path=<relative/path>\`. Re-emit the FULL contents of every file you touch. To delete a file, use the \`delete\` language with an empty body. Output nothing else — no commentary.`;
   },
 
   reviewer(ctx: AgentContext): string {

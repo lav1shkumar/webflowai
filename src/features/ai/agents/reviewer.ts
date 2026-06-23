@@ -1,4 +1,4 @@
-import { generateText } from "ai";
+import { generateText, stepCountIs } from "ai";
 import { getModel, isAiConfigured, modelDefaults } from "../model";
 import { prompts } from "../prompts";
 import { createWorkspaceTools } from "../tools";
@@ -50,7 +50,7 @@ async function generateReview(ctx: AgentContext): Promise<ReviewResult> {
     model: getModel(),
     prompt: prompts.reviewer(ctx),
     tools: createWorkspaceTools(ctx, "reviewer"),
-    maxSteps: 6,
+    stopWhen: stepCountIs(6),
     abortSignal: ctx.signal,
     ...modelDefaults,
   });

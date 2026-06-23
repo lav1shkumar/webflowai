@@ -1,7 +1,6 @@
 "use client";
 
 import { create } from "zustand";
-import { Orchestrator } from "@/features/ai/orchestrator";
 import { webContainerService, type ServerStatus } from "@/features/webcontainer/service";
 import {
   buildFileTree,
@@ -45,6 +44,8 @@ export interface ChatMessage {
   files?: string[];
   /** Credits charged for this assistant turn (when metered). */
   credits?: number;
+  /** Wall-clock time the assistant turn took to complete, in milliseconds. */
+  durationMs?: number;
   createdAt: number;
 }
 
@@ -93,10 +94,9 @@ const agentLabels: Record<AgentKind, string> = {
   architect: "Designing architecture",
   generator: "Generating code",
   "file-operation": "Applying changes",
+  verifier: "Verifying",
   reviewer: "Reviewing output",
 };
-
-const orchestrator = new Orchestrator({ maxReviewRetries: 1 });
 
 function rebuildTree(files: Record<string, string>): FileNode[] {
   return buildFileTree(files);
@@ -151,6 +151,7 @@ const AGENT_EVENT_TYPES = new Set([
   "plan",
   "blueprint",
   "review",
+  "verification",
   "tool",
   "error",
 ]);
@@ -389,6 +390,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       isGenerating: true,
     }));
 
+    // Track wall-clock duration of this assistant turn.
+    const startedAt = Date.now();
+
     const updateAssistant = (patch: Partial<ChatMessage>) =>
       set((s) => ({
         messages: s.messages.map((m) =>
@@ -471,6 +475,30 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
             content: event.review.summary,
           });
           break;
+        case "verification": {
+          const { result } = event;
+          const errors = result.issues.filter(
+            (i) => i.severity === "error",
+          ).length;
+          if (errors > 0) {
+            get().appendTerminal(
+              `\u001b[33m[verifier] ${errors} issue(s) found:\u001b[0m`,
+            );
+            for (const issue of result.issues.filter(
+              (i) => i.severity === "error",
+            )) {
+              const loc = issue.line
+                ? `${issue.path}:${issue.line}`
+                : issue.path;
+              get().appendTerminal(`\u001b[33m  • ${loc} — ${issue.message}\u001b[0m`);
+            }
+          } else {
+            get().appendTerminal(
+              `\u001b[32m[verifier] ${result.checked} files verified — no blocking issues.\u001b[0m`,
+            );
+          }
+          break;
+        }
         case "error":
           get().appendTerminal(`\u001b[31m[${event.agent}] ${event.message}\u001b[0m`);
           break;
@@ -535,33 +563,25 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         return;
       }
 
-      // Fallback: the in-browser demo pipeline (e.g. static hosting / offline).
+      // The server pipeline is the only generation path (the agents are
+      // server-only — they load the Vertex provider + google-auth-library,
+      // which can't run in the browser). Surface the failure to the user.
+      updateAssistant({
+        content:
+          serverErr instanceof Error
+            ? `Generation failed: ${serverErr.message}`
+            : "Generation failed — check the terminal for details.",
+      });
       get().appendTerminal(
-        `\u001b[33m[chat] Server pipeline unavailable, using local demo mode.\u001b[0m`,
+        `\u001b[31m[chat] ${
+          serverErr instanceof Error ? serverErr.message : "Generation failed."
+        }\u001b[0m`,
       );
-      try {
-        const result = await orchestrator.run({
-          projectId,
-          prompt,
-          files: get().files,
-          history,
-          emit: onEvent,
-        });
-        updateAssistant({
-          content:
-            result.context.review?.summary ??
-            `Done — applied ${result.changes.length} file change(s).`,
-        });
-      } catch {
-        updateAssistant({
-          content:
-            serverErr instanceof Error
-              ? `Generation failed: ${serverErr.message}`
-              : "Generation failed.",
-        });
-      }
     } finally {
       set({ isGenerating: false });
+
+      // Record how long this assistant turn took.
+      updateAssistant({ durationMs: Date.now() - startedAt });
 
       // If the preview is running and the generation changed dependencies,
       // reinstall + restart so the live app picks them up. Source-only edits

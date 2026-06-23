@@ -102,6 +102,8 @@ const config: Config = {
       backgroundImage: {
         "grid-pattern":
           "linear-gradient(to right, hsl(var(--border) / 0.5) 1px, transparent 1px), linear-gradient(to bottom, hsl(var(--border) / 0.5) 1px, transparent 1px)",
+        "dot-pattern":
+          "radial-gradient(circle, hsl(var(--foreground) / 0.08) 1px, transparent 1px)",
       },
     },
   },

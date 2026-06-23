@@ -10,7 +10,7 @@ export default function AuthLayout({
     <div className="grid min-h-screen lg:grid-cols-2">
       {/* Brand side */}
       <div className="relative hidden flex-col justify-between overflow-hidden border-r border-border bg-card/30 p-12 lg:flex">
-        <div className="pointer-events-none absolute inset-0 bg-grid-pattern bg-[size:48px_48px] opacity-[0.12]" />
+        <div className="pointer-events-none absolute inset-0 bg-dot-pattern bg-[size:24px_24px] opacity-[0.2]" />
         <div className="pointer-events-none absolute left-1/3 top-1/4 h-72 w-72 rounded-full bg-primary/[0.06] blur-[120px]" />
         <Logo />
         <div className="relative max-w-md space-y-5">

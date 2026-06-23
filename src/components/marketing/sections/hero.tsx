@@ -12,9 +12,9 @@ const logos = ["Acme", "Globex", "Initech", "Umbrella", "Hooli", "Pied Piper"];
 export function Hero() {
   return (
     <section className="relative overflow-hidden pt-36 pb-24">
-      {/* Background layers — subtle, neutral depth (no colored glow) */}
+      {/* Background layers — warm dotted pattern with soft amber glow */}
       <div className="pointer-events-none absolute inset-0 spotlight" />
-      <div className="pointer-events-none absolute inset-0 -z-10 bg-grid-pattern bg-[size:64px_64px] mask-fade-b opacity-[0.25]" />
+      <div className="pointer-events-none absolute inset-0 -z-10 bg-dot-pattern bg-[size:24px_24px] mask-fade-b opacity-[0.4]" />
       <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
 
       <div className="container-wide grid items-center gap-14 lg:grid-cols-[1.05fr_1fr]">

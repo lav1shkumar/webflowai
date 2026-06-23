@@ -16,7 +16,6 @@ import { CodeEditor } from "@/components/workspace/code-editor";
 import { PreviewPanel } from "@/components/workspace/preview-panel";
 import { TerminalPanel } from "@/components/workspace/terminal-panel";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ThemeToggle } from "@/components/app/theme-toggle";
 import { routes } from "@/config/site";
 import { cn } from "@/lib/utils";
@@ -86,19 +85,34 @@ export function WorkspaceShell({ projectId }: { projectId: string }) {
 
           <div className="ml-auto flex items-center gap-2">
             <ThemeToggle />
-            <Tabs value={view} onValueChange={(v) => setView(v as typeof view)}>
-              <TabsList className="h-8">
-                <TabsTrigger value="editor" className="text-xs">
-                  <Code2 className="h-3.5 w-3.5" /> Editor
-                </TabsTrigger>
-                <TabsTrigger value="preview" className="text-xs">
-                  <Eye className="h-3.5 w-3.5" /> Preview
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
+            <div className="flex items-center gap-1 rounded-lg border border-border p-1">
+              <button
+                onClick={() => setView("editor")}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition-colors",
+                  view === "editor"
+                    ? "bg-foreground/10 text-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <Code2 className="h-3.5 w-3.5" /> Editor
+              </button>
+              <button
+                onClick={() => setView("preview")}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition-colors",
+                  view === "preview"
+                    ? "bg-foreground/10 text-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <Eye className="h-3.5 w-3.5" /> Preview
+              </button>
+            </div>
             <Button
               variant="brand"
               size="sm"
+              className="border border-primary/50"
               onClick={() => {
                 setView("preview");
                 void bootPreview();

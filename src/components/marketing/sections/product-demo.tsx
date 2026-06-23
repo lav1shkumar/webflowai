@@ -3,10 +3,10 @@ import { SectionHeading } from "@/components/marketing/section-heading";
 import { Reveal } from "@/components/shared/reveal";
 
 const panels = [
-  { icon: MessagesSquare, label: "AI Chat", tone: "text-violet-400" },
+  { icon: MessagesSquare, label: "AI Chat", tone: "text-yellow-300" },
   { icon: Code2, label: "Editor", tone: "text-blue-400" },
   { icon: Eye, label: "Preview", tone: "text-emerald-400" },
-  { icon: TerminalSquare, label: "Terminal", tone: "text-amber-400" },
+  { icon: TerminalSquare, label: "Terminal", tone: "text-yellow-200" },
 ];
 
 export function ProductDemo() {
@@ -58,11 +58,11 @@ export function ProductDemo() {
                 {/* Editor */}
                 <div className="col-span-5 bg-background/30 p-4 font-mono text-xs leading-relaxed">
                   <pre className="text-muted-foreground">
-                    <span className="text-violet-400">export function</span>{" "}
+                    <span className="text-yellow-300">export function</span>{" "}
                     <span className="text-blue-400">Calendar</span>() {"{"}
-                    {"\n"}  <span className="text-violet-400">const</span>{" "}
+                    {"\n"}  <span className="text-yellow-300">const</span>{" "}
                     [date, setDate] = useState(today);
-                    {"\n"}  <span className="text-violet-400">return</span> (
+                    {"\n"}  <span className="text-yellow-300">return</span> (
                     {"\n"}    {"<"}
                     <span className="text-emerald-400">CalendarGrid</span>
                     {"\n"}      value={"{date}"}

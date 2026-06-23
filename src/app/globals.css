@@ -4,52 +4,53 @@
 
 @layer base {
   :root {
-    /* Light theme — clean, minimal, with a single soft violet accent. */
-    --background: 0 0% 100%;
-    --foreground: 264 18% 10%;
+    /* Light theme — warm canvas with a rich dark-gold primary that reads well
+       on light surfaces. Same hue family as dark mode's #fbe2a7 but pulled
+       down to ~38% lightness for proper contrast. */
+    --background: 40 20% 98%;
+    --foreground: 25 15% 10%;
     --card: 0 0% 100%;
-    --card-foreground: 264 18% 10%;
+    --card-foreground: 25 15% 10%;
     --popover: 0 0% 100%;
-    --popover-foreground: 264 18% 10%;
-    --primary: 270 52% 52%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 270 18% 96%;
-    --secondary-foreground: 264 16% 16%;
-    --muted: 270 16% 96%;
-    --muted-foreground: 258 8% 44%;
-    --accent: 270 18% 95%;
-    --accent-foreground: 264 16% 16%;
+    --popover-foreground: 25 15% 10%;
+    --primary: 17 22% 32%;
+    --primary-foreground: 40 30% 96%;
+    --secondary: 38 20% 93%;
+    --secondary-foreground: 25 12% 18%;
+    --muted: 38 15% 93%;
+    --muted-foreground: 25 8% 40%;
+    --accent: 38 18% 91%;
+    --accent-foreground: 25 12% 18%;
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
-    --border: 270 15% 90%;
-    --input: 270 15% 87%;
-    --ring: 270 52% 52%;
-    /* Rounder, softer geometry across the app. */
+    --border: 35 12% 82%;
+    --input: 35 10% 78%;
+    --ring: 17 22% 32%;
     --radius: 0.875rem;
   }
 
   .dark {
-    /* Dark theme — minimal near-black canvas faintly tinted toward the violet
-       accent, with hairline borders for quiet hierarchy. */
-    --background: 264 16% 7%;
-    --foreground: 0 0% 97%;
-    --card: 264 13% 10%;
-    --card-foreground: 0 0% 97%;
-    --popover: 264 15% 9%;
-    --popover-foreground: 0 0% 97%;
-    --primary: 270 62% 67%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 264 10% 15%;
-    --secondary-foreground: 0 0% 97%;
-    --muted: 264 9% 14%;
-    --muted-foreground: 264 8% 67%;
-    --accent: 264 9% 16%;
-    --accent-foreground: 0 0% 97%;
+    /* Dark theme — deep black canvas with soft golden cream accent (#fbe2a7).
+       Dotted background pattern complements the warm cream borders. */
+    --background: 20 10% 5%;
+    --foreground: 40 15% 90%;
+    --card: 20 8% 9%;
+    --card-foreground: 40 15% 90%;
+    --popover: 20 9% 8%;
+    --popover-foreground: 40 15% 90%;
+    --primary: 43 93% 82%;
+    --primary-foreground: 20 15% 8%;
+    --secondary: 20 7% 13%;
+    --secondary-foreground: 40 15% 90%;
+    --muted: 20 6% 12%;
+    --muted-foreground: 35 10% 55%;
+    --accent: 20 7% 14%;
+    --accent-foreground: 40 15% 90%;
     --destructive: 0 72% 55%;
     --destructive-foreground: 0 0% 98%;
-    --border: 264 9% 17%;
-    --input: 264 9% 20%;
-    --ring: 270 62% 67%;
+    --border: 30 8% 16%;
+    --input: 30 6% 18%;
+    --ring: 43 93% 82%;
   }
 }
 
@@ -67,7 +68,7 @@
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
   ::selection {
-    background: hsl(var(--primary) / 0.3);
+    background: hsl(var(--primary) / 0.25);
   }
   /* Custom scrollbar */
   ::-webkit-scrollbar {
@@ -103,23 +104,22 @@
     @apply backdrop-blur-2xl;
   }
 
-  /* Display text — solid, high-contrast. Kept as a class so headings can opt
-     into a very subtle top-down sheen without rainbow effects. */
+  /* Display text — solid, high-contrast. */
   .text-gradient {
     @apply text-foreground;
   }
-  /* Accent keyword highlight (single hue, solid). Replaces the old rainbow. */
+  /* Accent keyword highlight — uses primary (rich gold in light, cream in dark). */
   .text-gradient-brand {
     color: hsl(var(--primary));
   }
 
-  /* Accent surface — single hue with a faint vertical shade for depth.
-     Used on the logo mark, avatars, and progress fills. */
+  /* Accent surface — gradient fill for logo, progress bars, chart bars, avatars.
+     Uses CSS variable so it adapts per theme automatically. */
   .bg-brand-gradient {
     background-image: linear-gradient(
       180deg,
-      hsl(272 70% 72%) 0%,
-      hsl(270 60% 60%) 100%
+      hsl(var(--primary)) 0%,
+      hsl(var(--primary) / 0.8) 100%
     );
   }
 
@@ -128,12 +128,11 @@
     @apply transition-all duration-300;
   }
   .card-hover:hover {
-    border-color: hsl(var(--foreground) / 0.14);
+    border-color: hsl(var(--primary) / 0.3);
     background-color: hsl(var(--foreground) / 0.03);
   }
 
-  /* Premium hairline border: a faint top highlight, like brushed glass.
-     Neutral — no colored gradient. */
+  /* Premium hairline border: a faint warm top highlight. */
   .gradient-border {
     position: relative;
     background: hsl(var(--card));
@@ -148,8 +147,8 @@
     border-radius: inherit;
     background: linear-gradient(
       180deg,
-      hsl(var(--foreground) / 0.08),
-      transparent 35%
+      hsl(var(--primary) / 0.15),
+      transparent 40%
     );
     -webkit-mask:
       linear-gradient(#fff 0 0) content-box,
@@ -157,6 +156,25 @@
     -webkit-mask-composite: xor;
     mask-composite: exclude;
     pointer-events: none;
+  }
+
+  /* Dotted background pattern — the signature look from the reference design.
+     Warm-tinted dots on the dark canvas. */
+  .bg-dotted {
+    background-image: radial-gradient(
+      circle,
+      hsl(var(--foreground) / 0.08) 1px,
+      transparent 1px
+    );
+    background-size: 24px 24px;
+  }
+  .bg-dotted-subtle {
+    background-image: radial-gradient(
+      circle,
+      hsl(var(--foreground) / 0.05) 1px,
+      transparent 1px
+    );
+    background-size: 20px 20px;
   }
 }
 
@@ -167,11 +185,11 @@
   .container-wide {
     @apply mx-auto w-full max-w-7xl px-6;
   }
-  /* Very subtle vignette behind hero content — neutral, not a colored glow. */
+  /* Warm radial spotlight — amber/coffee glow. */
   .spotlight {
     background: radial-gradient(
       620px circle at 50% -8%,
-      hsl(var(--primary) / 0.1),
+      hsl(var(--primary) / 0.08),
       transparent 70%
     );
   }

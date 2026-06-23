@@ -1,10 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
-import { ClerkProvider } from "@clerk/nextjs";
 import { Providers } from "@/components/providers";
 import { siteConfig } from "@/config/site";
 import { isAuthConfigured } from "@/lib/env";
-import { clerkAppearance } from "@/lib/clerk-appearance";
 import "./globals.css";
 
 const inter = Inter({
@@ -37,7 +35,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#09090b",
+  themeColor: "#110f0d",
   width: "device-width",
   initialScale: 1,
 };
@@ -45,21 +43,13 @@ export const viewport: Viewport = {
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  const content = (
+  return (
     <html lang="en" suppressHydrationWarning>
       <body
         className={`${inter.variable} ${jetbrainsMono.variable} font-sans antialiased`}
       >
-        <Providers>{children}</Providers>
+        <Providers withAuth={isAuthConfigured}>{children}</Providers>
       </body>
     </html>
-  );
-
-  // Render with Clerk only when configured, so the app builds and runs in
-  // a public demo mode without auth credentials.
-  if (!isAuthConfigured) return content;
-
-  return (
-    <ClerkProvider appearance={clerkAppearance}>{content}</ClerkProvider>
   );
 }

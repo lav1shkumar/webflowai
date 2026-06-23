@@ -1,4 +1,4 @@
-import { generateText } from "ai";
+import { generateText, stepCountIs } from "ai";
 import { getModel, isAiConfigured, modelDefaults } from "../model";
 import { prompts } from "../prompts";
 import { createWorkspaceTools } from "../tools";
@@ -47,7 +47,7 @@ async function generateBlueprint(
     model: getModel(),
     prompt: prompts.architect(ctx),
     tools: createWorkspaceTools(ctx, "architect"),
-    maxSteps: 6,
+    stopWhen: stepCountIs(6),
     abortSignal: ctx.signal,
     ...modelDefaults,
   });

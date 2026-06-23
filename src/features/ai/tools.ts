@@ -34,7 +34,7 @@ export function createWorkspaceTools(
       "List every file in the current project workspace as a repository map " +
       "(path, language, size). Call this first to discover what exists before " +
       "deciding what to read or change.",
-    parameters: z.object({}),
+    inputSchema: z.object({}),
     execute: async () => {
       emitTool("list_files", "Listing workspace files");
       const paths = relevantPaths(ctx.files);
@@ -50,7 +50,7 @@ export function createWorkspaceTools(
       "Read the full current contents of a single file in the workspace by its " +
       "exact path (as shown by list_files). Use this to inspect code before " +
       "modifying it, so your edits preserve existing structure and behavior.",
-    parameters: z.object({
+    inputSchema: z.object({
       path: z
         .string()
         .describe("Exact workspace-relative file path, e.g. 'src/App.tsx'."),
@@ -86,7 +86,7 @@ export function createWorkspaceTools(
       "Search file contents across the workspace for a substring or regular " +
       "expression. Returns matching files with line numbers and snippets. Use " +
       "this to locate where a symbol, component, or string is defined or used.",
-    parameters: z.object({
+    inputSchema: z.object({
       query: z.string().describe("Substring or regex to search for."),
       isRegex: z
         .boolean()
