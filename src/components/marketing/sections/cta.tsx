@@ -6,7 +6,7 @@ import { routes } from "@/config/site";
 
 export function CTA() {
   return (
-    <section className="relative py-28">
+    <section className="relative py-20">
       <div className="container-wide">
         <Reveal>
           <div className="relative overflow-hidden rounded-3xl border border-border bg-card/60 px-8 py-20 text-center">

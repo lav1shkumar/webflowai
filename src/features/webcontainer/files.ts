@@ -46,11 +46,19 @@ export function buildFileTree(files: Record<string, string>): FileNode[] {
     let cursor = root;
     let accumulated = "";
 
-    segments.forEach((segment, idx) => {
+    let idx = 0;
+    for (const segment of segments) {
       accumulated = accumulated ? `${accumulated}/${segment}` : segment;
       const isLeaf = idx === segments.length - 1;
       cursor.children ??= [];
-      let next = cursor.children.find((c) => c.name === segment);
+
+      let next: FileNode | undefined;
+      for (const child of cursor.children) {
+        if (child.name === segment) {
+          next = child;
+          break;
+        }
+      }
 
       if (!next) {
         next = {
@@ -62,7 +70,8 @@ export function buildFileTree(files: Record<string, string>): FileNode[] {
         cursor.children.push(next);
       }
       cursor = next;
-    });
+      idx++;
+    }
   }
 
   // Directories first, then alphabetical.
@@ -92,7 +101,8 @@ export function toFileSystemTree(
     const segments = path.split("/").filter(Boolean);
     let cursor: FileSystemTree = tree;
 
-    segments.forEach((segment, idx) => {
+    let idx = 0;
+    for (const segment of segments) {
       const isLeaf = idx === segments.length - 1;
       if (isLeaf) {
         cursor[segment] = { file: { contents } };
@@ -106,62 +116,9 @@ export function toFileSystemTree(
           cursor = dir;
         }
       }
-    });
+      idx++;
+    }
   }
 
   return tree;
-}
-
-
-/**
- * Replace shell parameter expansions (e.g. `${PORT:-3000}`, `$PORT`) with a
- * literal port. The WebContainer shell (`jsh`) doesn't perform default-value
- * expansion, so `next dev -p ${PORT:-3000}` would pass an empty `-p` value
- * and crash. We normalize to a fixed port the preview can map.
- */
-function replacePortExpansions(text: string): string {
-  return text
-    .replace(/\$\{PORT:-(\d+)\}/g, "$1")
-    .replace(/\$\{PORT(:-)?\}/g, "3000")
-    .replace(/\$\{PORT\}/g, "3000")
-    .replace(/\$PORT\b/g, "3000");
-}
-
-/**
- * Make a generated `package.json` runnable inside the WebContainer:
- * normalize port expansions in its scripts. Falls back to a raw string
- * replacement if the JSON can't be parsed.
- */
-export function sanitizePackageJson(content: string): string {
-  try {
-    const pkg = JSON.parse(content) as {
-      scripts?: Record<string, string>;
-    };
-    if (pkg.scripts) {
-      for (const key of Object.keys(pkg.scripts)) {
-        const value = pkg.scripts[key];
-        if (typeof value === "string") {
-          pkg.scripts[key] = replacePortExpansions(value);
-        }
-      }
-      return JSON.stringify(pkg, null, 2) + "\n";
-    }
-    return content;
-  } catch {
-    return replacePortExpansions(content);
-  }
-}
-
-/** Normalize a project's files for the WebContainer runtime. */
-export function normalizeProjectFiles(
-  files: Record<string, string>,
-): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [path, content] of Object.entries(files)) {
-    out[path] =
-      path === "package.json" || path.endsWith("/package.json")
-        ? sanitizePackageJson(content)
-        : content;
-  }
-  return out;
 }

@@ -45,7 +45,6 @@ export async function activatePaidSubscription(
       plan: planEnum,
       status: "ACTIVE",
       billingCycle: cycleEnum,
-      provider: "RAZORPAY",
       currentPeriodStart: now,
       currentPeriodEnd: periodEnd,
     },

@@ -24,7 +24,7 @@ export function AppTopbar({ title }: { title?: string }) {
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b border-border bg-background/70 px-6 backdrop-blur-xl">
       <div className="flex items-center gap-3">
-        {title && <h1 className="text-lg font-semibold">{title}</h1>}
+        {title && <h1 className="text-lg font-semibold">{title}</h1>} 
       </div>
 
       <div className="flex items-center gap-2">
@@ -44,7 +44,7 @@ export function AppTopbar({ title }: { title?: string }) {
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-2 rounded-lg p-1 pr-2 transition-colors hover:bg-foreground/[0.06]">
+            <button className="flex items-center gap-2 rounded-lg p-1 transition-colors hover:bg-foreground/[0.06]">
               <Avatar className="h-8 w-8">
                 {viewer.avatarUrl && (
                   <AvatarImage src={viewer.avatarUrl} alt={viewer.name} />

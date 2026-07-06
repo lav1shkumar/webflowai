@@ -12,7 +12,6 @@ import type { BillingProvider, CheckoutSession } from "./provider";
  * Razorpay's spec.
  */
 export class RazorpayProvider implements BillingProvider {
-  readonly name = "razorpay" as const;
 
   private get configured(): boolean {
     return Boolean(env.razorpayKeyId && env.razorpayKeySecret);
@@ -32,7 +31,6 @@ export class RazorpayProvider implements BillingProvider {
 
     if (!this.configured) {
       return {
-        provider: "razorpay",
         referenceId: `order_demo_${input.planId}_${input.cycle}`,
         amount,
         currency: "INR",
@@ -67,7 +65,6 @@ export class RazorpayProvider implements BillingProvider {
 
     const order = (await res.json()) as { id: string };
     return {
-      provider: "razorpay",
       referenceId: order.id,
       amount,
       currency: "INR",

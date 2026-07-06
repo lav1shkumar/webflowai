@@ -49,7 +49,7 @@ const testimonials = [
 
 export function Testimonials() {
   return (
-    <section className="relative py-28">
+    <section className="relative py-20">
       <div className="container-wide">
         <SectionHeading
           eyebrow="Loved by builders"

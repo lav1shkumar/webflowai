@@ -37,8 +37,6 @@ model User {
 
   projects      Project[]
   subscription  Subscription?
-  usageEvents   UsageEvent[]
-  apiKeys       ApiKey[]
   messages      Message[]
 
   @@index([clerkId])
@@ -70,9 +68,6 @@ model Project {
 
   files       File[]
   messages    Message[]
-  generations Generation[]
-  deployments Deployment[]
-  usageEvents UsageEvent[]
 
   lastOpenedAt DateTime?
   createdAt    DateTime  @default(now())
@@ -128,8 +123,6 @@ model Message {
 
   createdAt DateTime @default(now())
 
-  generation Generation?
-
   @@index([projectId, createdAt])
 }
 
@@ -140,74 +133,8 @@ enum MessageRole {
   TOOL
 }
 
-model Generation {
-  id        String           @id @default(cuid())
-  projectId String
-  project   Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  messageId String?          @unique
-  message   Message?         @relation(fields: [messageId], references: [id], onDelete: SetNull)
-
-  status    GenerationStatus @default(PENDING)
-  // The multi-agent plan + per-agent step traces.
-  plan      Json?
-  steps     Json?
-
-  model        String?
-  promptTokens Int     @default(0)
-  outputTokens Int     @default(0)
-  creditsCost  Int     @default(0)
-  durationMs   Int     @default(0)
-  error        String?
-
-  createdAt   DateTime  @default(now())
-  completedAt DateTime?
-
-  @@index([projectId, createdAt])
-  @@index([status])
-}
-
-enum GenerationStatus {
-  PENDING
-  PLANNING
-  ARCHITECTING
-  GENERATING
-  APPLYING
-  REVIEWING
-  COMPLETED
-  FAILED
-}
-
 // ─────────────────────────────────────────────────────────────
-// Deployments
-// ─────────────────────────────────────────────────────────────
-
-model Deployment {
-  id        String           @id @default(cuid())
-  projectId String
-  project   Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  status   DeploymentStatus @default(QUEUED)
-  url      String?
-  provider String           @default("webflowai")
-  commitSha String?
-  logs     String?          @db.Text
-
-  createdAt DateTime  @default(now())
-  readyAt   DateTime?
-
-  @@index([projectId, createdAt])
-}
-
-enum DeploymentStatus {
-  QUEUED
-  BUILDING
-  READY
-  FAILED
-  CANCELED
-}
-
-// ─────────────────────────────────────────────────────────────
-// Billing (Razorpay-first, provider-agnostic)
+// Billing (Razorpay)
 // ─────────────────────────────────────────────────────────────
 
 model Subscription {
@@ -219,12 +146,8 @@ model Subscription {
   status       SubscriptionStatus @default(ACTIVE)
   billingCycle BillingCycle       @default(MONTHLY)
 
-  provider             BillingProvider @default(RAZORPAY)
-  razorpayCustomerId   String?
-  razorpaySubscriptionId String?       @unique
-  // Reserved for future Stripe support.
-  stripeCustomerId     String?
-  stripeSubscriptionId String?
+  razorpayCustomerId     String?
+  razorpaySubscriptionId String? @unique
 
   currentPeriodStart DateTime?
   currentPeriodEnd   DateTime?
@@ -258,11 +181,6 @@ enum BillingCycle {
   ANNUAL
 }
 
-enum BillingProvider {
-  RAZORPAY
-  STRIPE
-}
-
 model Payment {
   id             String        @id @default(cuid())
   subscriptionId String
@@ -290,47 +208,4 @@ enum PaymentStatus {
   FAILED
 }
 
-// ─────────────────────────────────────────────────────────────
-// Usage metering + API keys
-// ─────────────────────────────────────────────────────────────
 
-model UsageEvent {
-  id        String        @id @default(cuid())
-  userId    String
-  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  projectId String?
-  project   Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
-
-  type    UsageType
-  credits Int       @default(0)
-  tokens  Int       @default(0)
-  meta    Json?
-
-  createdAt DateTime @default(now())
-
-  @@index([userId, createdAt])
-  @@index([type, createdAt])
-}
-
-enum UsageType {
-  GENERATION
-  CHAT_MESSAGE
-  DEPLOYMENT
-  PREVIEW_BUILD
-}
-
-model ApiKey {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  name      String
-  prefix    String   // visible prefix, e.g. "wfa_live_xxxx"
-  hashedKey String   @unique
-  lastUsedAt DateTime?
-  revokedAt  DateTime?
-
-  createdAt DateTime @default(now())
-
-  @@index([userId])
-}

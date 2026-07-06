@@ -9,7 +9,7 @@ import { routes } from "@/config/site";
 
 export function TemplatesShowcase() {
   return (
-    <section id="templates" className="relative py-28">
+    <section id="templates" className="relative py-20">
       <div className="container-wide">
         <SectionHeading
           eyebrow="Templates"
@@ -18,7 +18,7 @@ export function TemplatesShowcase() {
         />
 
         <div className="mt-16 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {templates.map((template, i) => {
+          {templates.slice(0,6).map((template, i) => {
             const Icon = resolveIcon(template.icon);
             return (
               <Reveal key={template.id} delay={i * 0.04}>
@@ -26,22 +26,7 @@ export function TemplatesShowcase() {
                   href={routes.signUp}
                   className="group block h-full overflow-hidden rounded-2xl border border-border bg-card/40 card-hover"
                 >
-                  <div
-                    className={`relative h-32 bg-gradient-to-br ${template.gradient}`}
-                  >
-                    <div className="absolute inset-0 bg-dot-pattern bg-[size:20px_20px] opacity-25" />
-                    <div className="absolute bottom-3 left-4 flex h-11 w-11 items-center justify-center rounded-xl bg-black/30 backdrop-blur-md ring-1 ring-white/20">
-                      <Icon className="h-5 w-5 text-white" />
-                    </div>
-                    {template.popular && (
-                      <Badge
-                        variant="glass"
-                        className="absolute right-3 top-3 text-white"
-                      >
-                        Popular
-                      </Badge>
-                    )}
-                  </div>
+
                   <div className="p-5">
                     <div className="flex items-center justify-between">
                       <h3 className="font-semibold">{template.name}</h3>

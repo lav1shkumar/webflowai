@@ -95,15 +95,6 @@ export async function POST(request: Request) {
               select: { creditsBalance: true },
             });
             creditsRemaining = updated.creditsBalance;
-            await prisma.usageEvent.create({
-              data: {
-                userId: user.id,
-                projectId: dbProjectId(projectId),
-                type: "GENERATION",
-                credits: creditsUsed,
-                tokens: result.tokens,
-              },
-            });
           } catch {
             // Metering failure shouldn't fail the generation response.
           }
@@ -138,11 +129,3 @@ export async function POST(request: Request) {
   });
 }
 
-/**
- * The `projectId` from the client may be an ephemeral id (demo / unsaved
- * project) that doesn't exist in the DB. UsageEvent.projectId is a nullable
- * FK, so only attach it when it looks like a persisted cuid-style id.
- */
-function dbProjectId(projectId: string): string | null {
-  return /^c[a-z0-9]{20,}$/i.test(projectId) ? projectId : null;
-}

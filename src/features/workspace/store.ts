@@ -2,27 +2,16 @@
 
 import { create } from "zustand";
 import { webContainerService, type ServerStatus } from "@/features/webcontainer/service";
-import {
-  buildFileTree,
-  normalizeProjectFiles,
-  sanitizePackageJson,
-  type FileNode,
-} from "@/features/webcontainer/files";
+import { buildFileTree, type FileNode } from "@/features/webcontainer/files";
 import { terminalBus } from "@/features/workspace/terminal-bus";
 import { getProjectState, saveProjectState } from "@/server/projects";
 import { getCredits } from "@/server/credits";
 import type { AgentEvent, AgentKind } from "@/features/ai/types";
 import { shortId } from "@/lib/utils";
 
-/** Thrown when the server blocks a generation due to an exhausted balance. */
-class InsufficientCreditsError extends Error {
-  balance: number;
-  constructor(balance: number) {
-    super("insufficient-credits");
-    this.name = "InsufficientCreditsError";
-    this.balance = balance;
-  }
-}
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 export interface CreditsState {
   signedIn: boolean;
@@ -42,9 +31,7 @@ export interface ChatMessage {
   content: string;
   steps?: ChatStep[];
   files?: string[];
-  /** Credits charged for this assistant turn (when metered). */
   credits?: number;
-  /** Wall-clock time the assistant turn took to complete, in milliseconds. */
   durationMs?: number;
   createdAt: number;
 }
@@ -58,19 +45,11 @@ interface WorkspaceState {
   serverStatus: ServerStatus;
   previewUrl: string | null;
   isGenerating: boolean;
-
-  /** Credit balance for the signed-in user; null until loaded. */
   credits: CreditsState | null;
-
-  /** Project whose persisted state has finished loading (gates auto-seed). */
-  hydratedProjectId: string | null;
-  /** Project whose initial prompt has already been auto-sent (dedupes seed). */
-  seededProjectId: string | null;
 
   // lifecycle
   init: (projectId: string, initialPrompt?: string) => void;
   sendPrompt: (prompt: string) => Promise<void>;
-  fetchCredits: () => Promise<void>;
 
   // files
   setActiveFile: (path: string) => void;
@@ -82,14 +61,16 @@ interface WorkspaceState {
   renameFile: (from: string, to: string) => void;
   renameFolder: (from: string, to: string) => void;
 
-  // terminal / preview
-  appendTerminal: (line: string) => void;
-  clearTerminal: () => void;
+  // preview
   bootPreview: () => Promise<void>;
   restartPreview: () => Promise<void>;
 }
 
-const agentLabels: Record<AgentKind, string> = {
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const AGENT_LABELS: Record<AgentKind, string> = {
   planner: "Planning",
   architect: "Designing architecture",
   generator: "Generating code",
@@ -102,11 +83,6 @@ function rebuildTree(files: Record<string, string>): FileNode[] {
   return buildFileTree(files);
 }
 
-/**
- * Debounced per-path sync of editor edits into the running WebContainer.
- * Coalesces rapid keystrokes so we don't thrash the FS / HMR. No-op until the
- * project is mounted.
- */
 const containerSyncTimers = new Map<string, ReturnType<typeof setTimeout>>();
 function scheduleContainerSync(path: string, content: string): void {
   if (!webContainerService.isMounted) return;
@@ -121,7 +97,6 @@ function scheduleContainerSync(path: string, content: string): void {
   );
 }
 
-/** Normalize a package.json to just its dependency maps for change detection. */
 function depsSignature(pkg: string): string {
   try {
     const parsed = JSON.parse(pkg) as {
@@ -137,23 +112,18 @@ function depsSignature(pkg: string): string {
   }
 }
 
-/** True when package.json dependency sets differ (ignores formatting/scripts). */
 function dependenciesChanged(before: string, after: string): boolean {
   if (!after) return false;
   return depsSignature(before) !== depsSignature(after);
 }
 
+// ---------------------------------------------------------------------------
+// Server generation stream
+// ---------------------------------------------------------------------------
+
 const AGENT_EVENT_TYPES = new Set([
-  "phase",
-  "log",
-  "token",
-  "file",
-  "plan",
-  "blueprint",
-  "review",
-  "verification",
-  "tool",
-  "error",
+  "phase", "log", "token", "file", "plan", "blueprint",
+  "review", "verification", "tool", "error",
 ]);
 
 interface ServerRunOutput {
@@ -165,14 +135,6 @@ interface ServerRunOutput {
   signedIn: boolean;
 }
 
-/**
- * POST to the server generation route and consume its NDJSON event stream,
- * forwarding each {@link AgentEvent} to the live UI handler. Resolves once the
- * stream's terminal `done` marker is received; throws on `fatal` or transport
- * errors so the caller can fall back to the in-browser pipeline. Throws an
- * {@link InsufficientCreditsError} on HTTP 402 so the caller can gate instead
- * of falling back.
- */
 async function runViaServer(
   input: {
     projectId: string;
@@ -226,10 +188,8 @@ async function runViaServer(
       result.ok = Boolean(evt.ok);
       result.fileCount = Number(evt.fileCount ?? 0);
       result.signedIn = Boolean(evt.signedIn);
-      result.creditsUsed =
-        evt.creditsUsed != null ? Number(evt.creditsUsed) : null;
-      result.creditsRemaining =
-        evt.creditsRemaining != null ? Number(evt.creditsRemaining) : null;
+      result.creditsUsed = evt.creditsUsed != null ? Number(evt.creditsUsed) : null;
+      result.creditsRemaining = evt.creditsRemaining != null ? Number(evt.creditsRemaining) : null;
       return;
     }
     if (evt.type === "review") {
@@ -247,15 +207,30 @@ async function runViaServer(
     buffer += decoder.decode(value, { stream: true });
     let nl: number;
     while ((nl = buffer.indexOf("\n")) >= 0) {
-      const line = buffer.slice(0, nl);
+      handleLine(buffer.slice(0, nl));
       buffer = buffer.slice(nl + 1);
-      handleLine(line);
     }
   }
   if (buffer) handleLine(buffer);
 
   return result;
 }
+
+class InsufficientCreditsError extends Error {
+  balance: number;
+  constructor(balance: number) {
+    super("insufficient-credits");
+    this.name = "InsufficientCreditsError";
+    this.balance = balance;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Store
+// ---------------------------------------------------------------------------
+
+// Tracks whether init already auto-sent the initial prompt for a given project.
+const seededProjects = new Set<string>();
 
 export const useWorkspace = create<WorkspaceState>((set, get) => ({
   projectId: null,
@@ -267,41 +242,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   previewUrl: null,
   isGenerating: false,
   credits: null,
-  hydratedProjectId: null,
-  seededProjectId: null,
 
   init: (projectId, initialPrompt) => {
-    const switching = get().projectId !== projectId;
-
-    // Load the current credit balance for gating (signed-in users).
-    void get().fetchCredits();
-
-    // Send the initial prompt exactly once per project — but only after
-    // hydration has completed and confirmed the project is empty, and only
-    // while the chat is still idle. Safe to call repeatedly (e.g. when the
-    // `?prompt=` search param resolves a render after the first mount, or
-    // under React StrictMode's double-invoke).
-    const trySeed = () => {
-      const s = get();
-      if (
-        initialPrompt &&
-        s.projectId === projectId &&
-        s.hydratedProjectId === projectId &&
-        s.seededProjectId !== projectId &&
-        s.messages.length === 0 &&
-        !s.isGenerating
-      ) {
-        set({ seededProjectId: projectId });
-        void get().sendPrompt(initialPrompt);
-      }
-    };
-
-    // Re-init for the same project (e.g. a late-arriving prompt param): don't
-    // reset state, just attempt to seed now that we may have a prompt.
-    if (!switching) {
-      trySeed();
-      return;
-    }
+    // Already on this project — nothing to do.
+    if (get().projectId === projectId) return;
 
     set({
       projectId,
@@ -311,8 +255,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       messages: [],
       serverStatus: "idle",
       previewUrl: null,
-      hydratedProjectId: null,
-      seededProjectId: null,
     });
 
     terminalBus.clear();
@@ -325,34 +267,42 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       onError: (message) => terminalBus.writeLine(`\u001b[31m${message}\u001b[0m`),
     });
 
-    // Hydrate from the database, then auto-run the seed prompt only when the
-    // project is brand new (no persisted files/messages).
+    // Load credits.
+    void (async () => {
+      try {
+        set({ credits: await getCredits() });
+      } catch { /* unavailable */ }
+    })();
+
+    // Load saved project state, then auto-send the initial prompt if new.
     void (async () => {
       try {
         const state = await getProjectState(projectId);
         if (state && get().projectId === projectId) {
-          const restored: ChatMessage[] = state.messages.map((m) => ({
-            id: m.id,
-            role: m.role,
-            content: m.content,
-            createdAt: m.createdAt,
-          }));
           set({
             files: state.files,
             tree: rebuildTree(state.files),
-            messages: restored,
+            messages: state.messages.map((m) => ({
+              id: m.id,
+              role: m.role,
+              content: m.content,
+              createdAt: m.createdAt,
+            })),
             activeFilePath: Object.keys(state.files)[0] ?? null,
           });
         }
-      } catch {
-        /* persistence unavailable — run in-memory */
-      } finally {
-        // Mark hydration complete (even on failure) so seeding can proceed.
-        if (get().projectId === projectId) {
-          set({ hydratedProjectId: projectId });
-        }
+      } catch { /* run in-memory */ }
+
+      // Auto-send the initial prompt only for brand-new projects.
+      if (
+        initialPrompt &&
+        !seededProjects.has(projectId) &&
+        get().projectId === projectId &&
+        get().messages.length === 0
+      ) {
+        seededProjects.add(projectId);
+        void get().sendPrompt(initialPrompt);
       }
-      trySeed();
     })();
   },
 
@@ -360,12 +310,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const projectId = get().projectId;
     if (!projectId || get().isGenerating) return;
 
-    // Block when a signed-in user's balance is exhausted — they must top up.
     const credits = get().credits;
     if (credits?.signedIn && credits.balance <= 0) {
-      get().appendTerminal(
-        "\u001b[33m[chat] Out of credits — top up to keep building.\u001b[0m",
-      );
       return;
     }
 
@@ -390,7 +336,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       isGenerating: true,
     }));
 
-    // Track wall-clock duration of this assistant turn.
     const startedAt = Date.now();
 
     const updateAssistant = (patch: Partial<ChatMessage>) =>
@@ -406,11 +351,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           if (m.id !== assistantId) return m;
           const steps = [...(m.steps ?? [])];
           const idx = steps.findIndex((st) => st.agent === agent);
-          const next: ChatStep = {
-            agent,
-            label: agentLabels[agent],
-            status,
-          };
+          const next: ChatStep = { agent, label: AGENT_LABELS[agent], status };
           if (idx >= 0) steps[idx] = next;
           else steps.push(next);
           return { ...m, steps };
@@ -425,28 +366,15 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           if (event.phase === "succeeded") upsertStep(event.agent, "done");
           if (event.phase === "failed") upsertStep(event.agent, "error");
           break;
-        case "log":
-          get().appendTerminal(`[${event.agent}] ${event.message}`);
-          break;
-        case "tool":
-          get().appendTerminal(
-            `\u001b[36m[${event.agent}] ${event.detail}\u001b[0m`,
-          );
-          break;
         case "file": {
           const { change } = event;
-          const synced =
-            change.op === "delete"
-              ? ""
-              : change.path.endsWith("package.json")
-                ? sanitizePackageJson(change.content ?? "")
-                : (change.content ?? "");
+          const content = change.op === "delete" ? "" : (change.content ?? "");
           set((s) => {
             const files = { ...s.files };
             if (change.op === "delete") {
               delete files[change.path];
             } else {
-              files[change.path] = synced;
+              files[change.path] = content;
             }
             return {
               files,
@@ -454,12 +382,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
               activeFilePath: s.activeFilePath ?? change.path,
             };
           });
-          // Mirror the change into the running WebContainer so the live
-          // preview updates immediately (no-op until the project is mounted).
           if (change.op === "delete") {
             void webContainerService.syncDelete(change.path);
           } else {
-            void webContainerService.syncFile(change.path, synced);
+            void webContainerService.syncFile(change.path, content);
           }
           set((s) => ({
             messages: s.messages.map((m) =>
@@ -471,36 +397,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           break;
         }
         case "review":
-          updateAssistant({
-            content: event.review.summary,
-          });
-          break;
-        case "verification": {
-          const { result } = event;
-          const errors = result.issues.filter(
-            (i) => i.severity === "error",
-          ).length;
-          if (errors > 0) {
-            get().appendTerminal(
-              `\u001b[33m[verifier] ${errors} issue(s) found:\u001b[0m`,
-            );
-            for (const issue of result.issues.filter(
-              (i) => i.severity === "error",
-            )) {
-              const loc = issue.line
-                ? `${issue.path}:${issue.line}`
-                : issue.path;
-              get().appendTerminal(`\u001b[33m  • ${loc} — ${issue.message}\u001b[0m`);
-            }
-          } else {
-            get().appendTerminal(
-              `\u001b[32m[verifier] ${result.checked} files verified — no blocking issues.\u001b[0m`,
-            );
-          }
-          break;
-        }
-        case "error":
-          get().appendTerminal(`\u001b[31m[${event.agent}] ${event.message}\u001b[0m`);
+          updateAssistant({ content: event.review.summary });
           break;
       }
     };
@@ -509,17 +406,15 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       .filter((m) => m.content)
       .map((m) => ({ role: m.role, content: m.content }));
 
-    // Snapshot deps so we can reinstall only if package.json deps change.
     const pkgBefore = get().files["package.json"] ?? "";
 
     try {
-      // Primary path: run the multi-agent pipeline server-side (where the
-      // model API key lives) and stream events back as NDJSON.
       const { summary, fileCount, ok, creditsUsed, creditsRemaining, signedIn } =
         await runViaServer(
           { projectId, prompt, files: get().files, history },
           onEvent,
         );
+
       updateAssistant({
         content:
           summary ??
@@ -528,7 +423,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
             : "I couldn't complete that — check the terminal for details."),
         ...(creditsUsed != null ? { credits: creditsUsed } : {}),
       });
-      // Reflect the new balance reported by the server.
+
       if (signedIn && creditsRemaining != null) {
         set((s) => ({
           credits: {
@@ -537,14 +432,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
             monthly: s.credits?.monthly ?? creditsRemaining,
           },
         }));
-        if (creditsUsed != null) {
-          get().appendTerminal(
-            `\u001b[2m[chat] Used ${creditsUsed} credit(s) · ${creditsRemaining} remaining.\u001b[0m`,
-          );
-        }
       }
     } catch (serverErr) {
-      // Out of credits: gate hard — never fall back to the local pipeline.
       if (serverErr instanceof InsufficientCreditsError) {
         set((s) => ({
           credits: {
@@ -554,50 +443,29 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           },
         }));
         updateAssistant({
-          content:
-            "You're out of credits. Top up your plan to continue generating.",
+          content: "You're out of credits. Top up your plan to continue generating.",
         });
-        get().appendTerminal(
-          "\u001b[33m[chat] Out of credits — top up to keep building.\u001b[0m",
-        );
         return;
       }
 
-      // The server pipeline is the only generation path (the agents are
-      // server-only — they load the Vertex provider + google-auth-library,
-      // which can't run in the browser). Surface the failure to the user.
       updateAssistant({
         content:
           serverErr instanceof Error
             ? `Generation failed: ${serverErr.message}`
             : "Generation failed — check the terminal for details.",
       });
-      get().appendTerminal(
-        `\u001b[31m[chat] ${
-          serverErr instanceof Error ? serverErr.message : "Generation failed."
-        }\u001b[0m`,
-      );
     } finally {
       set({ isGenerating: false });
-
-      // Record how long this assistant turn took.
       updateAssistant({ durationMs: Date.now() - startedAt });
 
-      // If the preview is running and the generation changed dependencies,
-      // reinstall + restart so the live app picks them up. Source-only edits
-      // were already mirrored into the container during streaming (HMR).
       if (webContainerService.isMounted) {
         const pkgAfter = get().files["package.json"] ?? "";
         if (dependenciesChanged(pkgBefore, pkgAfter)) {
-          get().appendTerminal(
-            "\u001b[36m[preview] Dependencies changed — reinstalling…\u001b[0m",
-          );
+          terminalBus.writeLine("\u001b[36m[preview] Dependencies changed — reinstalling…\u001b[0m");
           void webContainerService.resyncDependencies();
         }
       }
 
-      // Persist the resulting files + chat. No-op for ephemeral/demo projects
-      // (the action returns ok:false when there's no matching DB project).
       void (async () => {
         try {
           const s = get();
@@ -607,29 +475,18 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
               .filter((m) => m.content)
               .map((m) => ({ role: m.role, content: m.content })),
           });
-        } catch {
-          /* persistence unavailable */
-        }
+        } catch { /* persistence unavailable */ }
       })();
     }
   },
 
   setActiveFile: (path) => set({ activeFilePath: path }),
 
-  fetchCredits: async () => {
-    try {
-      const info = await getCredits();
-      set({ credits: info });
-    } catch {
-      /* credits unavailable — leave gating disabled */
-    }
-  },
-
-  writeFile: (path, content) => {    set((s) => {
+  writeFile: (path, content) => {
+    set((s) => {
       const files = { ...s.files, [path]: content };
       return { files, tree: rebuildTree(files) };
     });
-    // Debounced mirror into the running container (no-op if not mounted).
     scheduleContainerSync(path, content);
   },
 
@@ -645,8 +502,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   createFolder: (path) => {
     const clean = path.replace(/^\/+|\/+$/g, "");
     if (!clean) return;
-    // Folders only exist implicitly (the file map is flat), so we materialize
-    // an empty directory with a conventional placeholder file.
     const keep = `${clean}/.gitkeep`;
     if (get().files[keep] !== undefined) return;
     set((s) => {
@@ -660,8 +515,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     set((s) => {
       const files = { ...s.files };
       delete files[path];
-      const activeFilePath =
-        s.activeFilePath === path ? null : s.activeFilePath;
+      const activeFilePath = s.activeFilePath === path ? null : s.activeFilePath;
       return { files, tree: rebuildTree(files), activeFilePath };
     });
     void webContainerService.syncDelete(path);
@@ -731,26 +585,18 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }
   },
 
-  appendTerminal: (line) => terminalBus.writeLine(line),
-
-  clearTerminal: () => terminalBus.clear(),
-
   bootPreview: async () => {
     if (!webContainerService.isSupported) {
-      get().appendTerminal(
+      terminalBus.writeLine(
         "\u001b[33mWebContainers require a cross-origin-isolated context. Preview runs in supported browsers.\u001b[0m",
       );
       return;
     }
     try {
-      // Normalize scripts (e.g. ${PORT:-3000}) that the WebContainer shell
-      // can't expand, and reflect the fix back into the editor/state.
-      const normalized = normalizeProjectFiles(get().files);
-      set({ files: normalized, tree: rebuildTree(normalized) });
-      await webContainerService.mount(normalized);
+      await webContainerService.mount(get().files);
       await webContainerService.startDevServer();
     } catch (err) {
-      get().appendTerminal(
+      terminalBus.writeLine(
         `\u001b[31m${err instanceof Error ? err.message : "Preview failed to boot"}\u001b[0m`,
       );
     }

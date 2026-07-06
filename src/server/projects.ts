@@ -164,7 +164,7 @@ export async function renameProject(
 
 /**
  * Permanently delete a project owned by the current user. Related files,
- * messages, generations and deployments are removed via `onDelete: Cascade`.
+ * messages and generations are removed via `onDelete: Cascade`.
  */
 export async function deleteProject(
   id: string,

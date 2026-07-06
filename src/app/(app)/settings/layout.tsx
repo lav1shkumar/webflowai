@@ -11,7 +11,6 @@ const tabs = [
   { label: "Account", href: routes.settings },
   { label: "Billing", href: `${routes.settings}/billing` },
   { label: "Preferences", href: `${routes.settings}/preferences` },
-  { label: "API Keys", href: `${routes.settings}/api-keys` },
 ];
 
 export default function SettingsLayout({

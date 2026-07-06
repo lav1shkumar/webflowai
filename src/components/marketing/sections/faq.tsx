@@ -25,7 +25,7 @@ const faqs = [
   },
   {
     q: "What about billing in India?",
-    a: "Billing is India-first via Razorpay with UPI, cards, and net-banking. The architecture is provider-agnostic, so Stripe can be added for other regions.",
+    a: "Billing is India-first via Razorpay with UPI, cards, and net-banking.",
   },
   {
     q: "Is there a free plan?",
@@ -37,7 +37,7 @@ export function FAQ() {
   const [open, setOpen] = React.useState<number | null>(0);
 
   return (
-    <section id="faq" className="relative py-28">
+    <section id="faq" className="relative py-20">
       <div className="container-tight">
         <SectionHeading
           eyebrow="FAQ"

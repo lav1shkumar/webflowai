@@ -15,7 +15,7 @@ export function Pricing() {
   const [annual, setAnnual] = React.useState(true);
 
   return (
-    <section id="pricing" className="relative py-28">
+    <section id="pricing" className="relative py-20">
       <div className="pointer-events-none absolute left-1/2 top-1/3 -z-10 h-[360px] w-[560px] -translate-x-1/2 rounded-full bg-primary/[0.05] blur-[130px]" />
       <div className="container-wide">
         <SectionHeading

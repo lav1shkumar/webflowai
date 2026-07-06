@@ -62,7 +62,7 @@ const features = [
 
 export function Features() {
   return (
-    <section id="features" className="relative py-28">
+    <section id="features" className="relative py-20">
       <div className="container-wide">
         <SectionHeading
           eyebrow="Features"

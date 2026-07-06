@@ -18,18 +18,9 @@ export interface WebContainerCallbacks {
 }
 
 /**
- * WebContainerService — a thin, framework-agnostic wrapper around the
- * `@webcontainer/api` runtime.
- *
- * Responsibilities:
- *  - Boot a single shared WebContainer (the API only allows one per page).
- *  - Mount / write / update files.
- *  - Run commands and stream their output to the terminal.
- *  - Manage the dev server lifecycle (install → dev → ready → restart).
- *
- * It is intentionally decoupled from React; the `useWorkspace` store wires
- * its callbacks to UI state. Boot is lazy and guarded so it is safe to call
- * from effects.
+ * Thin, framework-agnostic wrapper around the `@webcontainer/api` runtime.
+ * Boots a single shared container, mounts files, and manages the dev server
+ * lifecycle. The `useWorkspace` store wires its callbacks to UI state.
  */
 export class WebContainerService {
   private static instance: WebContainerService | null = null;
@@ -39,7 +30,6 @@ export class WebContainerService {
   private shellProcess: WebContainerProcess | null = null;
   private shellWriter: WritableStreamDefaultWriter<string> | null = null;
   private callbacks: WebContainerCallbacks = {};
-  private serverUrl: string | null = null;
   private mounted = false;
 
   static get(): WebContainerService {
@@ -61,8 +51,8 @@ export class WebContainerService {
     );
   }
 
-  get url(): string | null {
-    return this.serverUrl;
+  get isMounted(): boolean {
+    return this.mounted;
   }
 
   /** Boot the WebContainer runtime (idempotent). */
@@ -70,17 +60,12 @@ export class WebContainerService {
     if (this.container) return this.container;
     if (this.bootPromise) return this.bootPromise;
 
-    // NOTE: boot() is a low-level concern shared by the shell and the dev
-    // server. It deliberately does NOT touch `serverStatus` — the preview
-    // lifecycle owns that (see mount/startDevServer), so booting the shell
-    // never affects the preview's reported state.
     this.bootPromise = (async () => {
       // Dynamic import keeps the heavy runtime out of the marketing bundle.
       const { WebContainer } = await import("@webcontainer/api");
       const instance = await WebContainer.boot();
       this.container = instance;
       instance.on("server-ready", (port, url) => {
-        this.serverUrl = url;
         this.setStatus("ready");
         this.callbacks.onServerReady?.(url, port);
       });
@@ -103,21 +88,13 @@ export class WebContainerService {
     this.mounted = true;
   }
 
-  get isMounted(): boolean {
-    return this.mounted;
-  }
-
-  /**
-   * Mirror a single created/updated file into the running container so the
-   * dev server (e.g. Vite HMR) reflects it live. No-op until the project has
-   * been mounted — before that, the next {@link mount} carries the change.
-   */
+  /** Mirror a single created/updated file into the running container. */
   async syncFile(path: string, content: string): Promise<void> {
     if (!this.mounted) return;
     await this.writeFile(path, content);
   }
 
-  /** Mirror a file deletion into the running container. No-op if unmounted. */
+  /** Mirror a file deletion into the running container. */
   async syncDelete(path: string): Promise<void> {
     if (!this.mounted) return;
     try {
@@ -127,11 +104,7 @@ export class WebContainerService {
     }
   }
 
-  /**
-   * Reinstall dependencies and restart the dev server. Used when `package.json`
-   * dependencies change (source-only edits are picked up by HMR and don't need
-   * this). No-op until the project is mounted.
-   */
+  /** Reinstall dependencies and restart the dev server (on package.json changes). */
   async resyncDependencies(): Promise<void> {
     if (!this.mounted) return;
     this.setStatus("installing");
@@ -143,33 +116,24 @@ export class WebContainerService {
     }
     this.devProcess?.kill();
     this.devProcess = null;
-    this.serverUrl = null;
     await this.spawnDev();
   }
 
   /** Write or overwrite a single file, creating parent dirs as needed. */
-  async writeFile(path: string, content: string): Promise<void> {
+  private async writeFile(path: string, content: string): Promise<void> {
     const container = await this.boot();
     const dir = path.split("/").slice(0, -1).join("/");
     if (dir) await container.fs.mkdir(dir, { recursive: true });
     await container.fs.writeFile(path, content);
   }
 
-  async readFile(path: string): Promise<string> {
-    const container = await this.boot();
-    return container.fs.readFile(path, "utf-8");
-  }
-
-  async removeFile(path: string): Promise<void> {
+  private async removeFile(path: string): Promise<void> {
     const container = await this.boot();
     await container.fs.rm(path, { recursive: true, force: true });
   }
 
-  /**
-   * Spawn a command, streaming stdout to the terminal callback.
-   * Resolves with the process exit code.
-   */
-  async run(command: string, args: string[] = []): Promise<number> {
+  /** Spawn a command, streaming stdout to the terminal. Resolves with exit code. */
+  private async run(command: string, args: string[] = []): Promise<number> {
     const container = await this.boot();
     this.callbacks.onOutput?.(`\u001b[36m$ ${command} ${args.join(" ")}\u001b[0m\r\n`);
     const process = await container.spawn(command, args);
@@ -181,16 +145,12 @@ export class WebContainerService {
     return process.exit;
   }
 
-  /**
-   * Full dev lifecycle: install dependencies then start the dev server.
-   * Reuses a running dev process if already started.
-   */
+  /** Install dependencies then start the dev server. */
   async startDevServer(
     installCommand: [string, string[]] = ["npm", ["install"]],
     devCommand: [string, string[]] = ["npm", ["run", "dev"]],
   ): Promise<void> {
     await this.boot();
-
     this.setStatus("installing");
     const installExit = await this.run(installCommand[0], installCommand[1]);
     if (installExit !== 0) {
@@ -198,11 +158,10 @@ export class WebContainerService {
       this.setStatus("error");
       return;
     }
-
     await this.spawnDev(devCommand);
   }
 
-  /** Spawn the dev server process and stream its output. Status → "starting". */
+  /** Spawn the dev server process and stream its output. */
   private async spawnDev(
     devCommand: [string, string[]] = ["npm", ["run", "dev"]],
   ): Promise<void> {
@@ -221,15 +180,10 @@ export class WebContainerService {
   async restart(): Promise<void> {
     this.devProcess?.kill();
     this.devProcess = null;
-    this.serverUrl = null;
     await this.startDevServer();
   }
 
-  /**
-   * Start an interactive `jsh` shell wired to the terminal. Output is streamed
-   * to `onOutput`; keystrokes are sent via {@link writeToShell}. Idempotent —
-   * a second call is a no-op while a shell is alive.
-   */
+  /** Start an interactive `jsh` shell wired to the terminal. Idempotent. */
   async startShell(cols: number, rows: number): Promise<void> {
     const container = await this.boot();
     if (this.shellProcess) return;
@@ -246,7 +200,6 @@ export class WebContainerService {
       }),
     );
 
-    // Surface unexpected shell exit so the UI can offer a restart.
     shell.exit.then(() => {
       this.shellProcess = null;
       this.shellWriter = null;
@@ -258,28 +211,9 @@ export class WebContainerService {
     void this.shellWriter?.write(data);
   }
 
-  /** Run a command line in the interactive shell (appends a newline). */
-  runInShell(command: string): void {
-    this.writeToShell(`${command}\n`);
-  }
-
   /** Resize the shell PTY to match the rendered terminal. */
   resizeShell(cols: number, rows: number): void {
     this.shellProcess?.resize({ cols, rows });
-  }
-
-  get hasShell(): boolean {
-    return this.shellProcess !== null;
-  }
-
-  teardown(): void {
-    this.devProcess?.kill();
-    this.shellProcess?.kill();
-    this.devProcess = null;
-    this.shellProcess = null;
-    this.shellWriter = null;
-    this.serverUrl = null;
-    this.mounted = false;
   }
 
   private setStatus(status: ServerStatus): void {
