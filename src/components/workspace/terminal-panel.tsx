@@ -12,7 +12,7 @@ import "@xterm/xterm/css/xterm.css";
 
 /** xterm color palettes for each theme. */
 const darkTheme: ITheme = {
-  background: "#0d0e12",
+  background: "#0E0C0B",
   foreground: "#e4e4e7",
   cursor: "#fbe2a7",
   cursorAccent: "#0d0e12",

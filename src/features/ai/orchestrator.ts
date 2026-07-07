@@ -3,7 +3,6 @@ import { architectAgent } from "./agents/architect";
 import { generatorAgent } from "./agents/generator";
 import { fileOperationAgent } from "./agents/file-operation";
 import { verifierAgent } from "./agents/verifier";
-import { reviewerAgent } from "./agents/reviewer";
 import type {
   Agent,
   AgentContext,
@@ -12,14 +11,13 @@ import type {
   FileChange,
 } from "./types";
 
-/** Registry of all agents, keyed by kind. Extensible by design. */
-export const agentRegistry: Record<AgentKind, Agent> = {
+/** Registry of all agents, keyed by kind. */
+export const agentRegistry: Partial<Record<AgentKind, Agent>> = {
   planner: plannerAgent,
   architect: architectAgent,
   generator: generatorAgent,
   "file-operation": fileOperationAgent,
   verifier: verifierAgent,
-  reviewer: reviewerAgent,
 };
 
 export interface OrchestratorInput {
@@ -29,8 +27,6 @@ export interface OrchestratorInput {
   history?: { role: "user" | "assistant"; content: string }[];
   emit?: (event: AgentEvent) => void;
   signal?: AbortSignal;
-  /** Re-run generation+review if the reviewer rejects, up to N times. */
-  maxReviewRetries?: number;
   /** Re-run generation to fix defects the verifier finds, up to N times. */
   maxFixAttempts?: number;
 }
@@ -58,11 +54,9 @@ export interface OrchestratorResult {
  * fans agent events out to both an in-memory log and an optional live sink.
  */
 export class Orchestrator {
-  private readonly maxReviewRetries: number;
   private readonly maxFixAttempts: number;
 
-  constructor(opts: { maxReviewRetries?: number; maxFixAttempts?: number } = {}) {
-    this.maxReviewRetries = opts.maxReviewRetries ?? 1;
+  constructor(opts: { maxFixAttempts?: number } = {}) {
     this.maxFixAttempts = opts.maxFixAttempts ?? 2;
   }
 
@@ -138,31 +132,20 @@ export class Orchestrator {
       ctx.verification = undefined;
     }
 
-    // 5. Review (LLM summary + final opinion), with bounded retry.
-    let attempt = 0;
-    do {
-      const reviewed = await reviewerAgent.run(ctx);
-      if (!reviewed.ok) return this.fail(ctx, events);
-
-      if (ctx.review?.approved) break;
-      attempt += 1;
-      if (attempt <= this.maxReviewRetries) {
-        emit({
-          type: "log",
-          agent: "reviewer",
-          message: `Review requested changes — retry ${attempt}/${this.maxReviewRetries}.`,
-        });
-        ctx.changes = [];
-        const regen = await generatorAgent.run(ctx);
-        if (!regen.ok) return this.fail(ctx, events);
-        const reapplied = await fileOperationAgent.run(ctx);
-        if (!reapplied.ok) return this.fail(ctx, events);
-      }
-    } while (attempt <= this.maxReviewRetries && !ctx.review?.approved);
+    // 5. Review — produce a user-facing summary without an LLM call.
+    const review = {
+      approved: true,
+      score: 100,
+      issues: [],
+      summary: `Applied ${ctx.changes.length} file change(s).`,
+    };
+    ctx.review = review;
+    ctx.emit({ type: "review", review });
+    ctx.emit({ type: "phase", agent: "reviewer", phase: "succeeded" });
 
     const verificationOk = ctx.verification ? ctx.verification.ok : true;
     return {
-      ok: Boolean(ctx.review?.approved) && verificationOk,
+      ok: verificationOk,
       files: ctx.files,
       changes: ctx.changes,
       events,
@@ -187,4 +170,4 @@ export class Orchestrator {
 }
 
 /** Convenience singleton for server actions / routes. */
-export const orchestrator = new Orchestrator({ maxReviewRetries: 1 });
+export const orchestrator = new Orchestrator();

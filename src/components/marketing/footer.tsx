@@ -10,33 +10,14 @@ const footerLinks: { title: string; links: { label: string; href: string }[] }[]
         { label: "Features", href: "#features" },
         { label: "Templates", href: "#templates" },
         { label: "Pricing", href: "#pricing" },
-        { label: "Changelog", href: "#" },
-      ],
-    },
-    {
-      title: "Company",
-      links: [
-        { label: "About", href: "#" },
-        { label: "Blog", href: "#" },
-        { label: "Careers", href: "#" },
-        { label: "Contact", href: "#" },
-      ],
-    },
-    {
-      title: "Resources",
-      links: [
-        { label: "Documentation", href: "#" },
-        { label: "API Reference", href: "#" },
-        { label: "Community", href: "#" },
-        { label: "Status", href: "#" },
       ],
     },
     {
       title: "Legal",
       links: [
-        { label: "Privacy", href: "#" },
-        { label: "Terms", href: "#" },
-        { label: "Security", href: "#" },
+        { label: "Privacy Policy", href: "/privacy" },
+        { label: "Terms of Service", href: "/terms" },
+        { label: "Support", href: "/support" },
       ],
     },
   ];
@@ -45,7 +26,7 @@ export function MarketingFooter() {
   return (
     <footer className="relative border-t border-border">
       <div className="container-wide py-16">
-        <div className="grid gap-12 lg:grid-cols-[1.5fr_repeat(4,1fr)]">
+        <div className="grid gap-12 lg:grid-cols-[1.5fr_repeat(2,1fr)]">
           <div className="space-y-4">
             <Logo />
             <p className="max-w-xs text-sm text-muted-foreground">
@@ -77,9 +58,14 @@ export function MarketingFooter() {
           <p className="text-sm text-muted-foreground">
             © {new Date().getFullYear()} {siteConfig.name}. All rights reserved.
           </p>
-          <p className="text-sm text-muted-foreground">
-            Built with AI, WebContainers, and care.
-          </p>
+          <div className="flex gap-4 text-sm text-muted-foreground">
+            <Link href="/privacy" className="hover:text-foreground transition-colors">
+              Privacy
+            </Link>
+            <Link href="/terms" className="hover:text-foreground transition-colors">
+              Terms
+            </Link>
+          </div>
         </div>
       </div>
     </footer>

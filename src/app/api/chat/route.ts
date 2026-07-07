@@ -6,7 +6,7 @@ import { getCurrentDbUser } from "@/server/user";
 import { creditsForTokens } from "@/lib/credits";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 const schema = z.object({
   projectId: z.string().min(1),
@@ -64,7 +64,6 @@ export async function POST(request: Request) {
 
   const encoder = new TextEncoder();
   const orchestrator = new Orchestrator({
-    maxReviewRetries: 1,
     maxFixAttempts: 2,
   });
 

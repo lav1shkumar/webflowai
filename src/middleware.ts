@@ -43,12 +43,15 @@ const middleware = hasClerk
         return redirectToSignIn({ returnBackUrl: req.url });
       }
 
-      // Signed-in users on the landing/auth pages → dashboard.
-      if (isAuthFlowRoute(req) && userId) {
-        const url = req.nextUrl.clone();
-        url.pathname = "/dashboard";
-        url.search = "";
-        return NextResponse.redirect(url);
+      // Signed-in users on auth pages → dashboard.
+      if (isAuthFlowRoute(req) && userId && !req.nextUrl.pathname.startsWith("/sign")) {
+        // Only redirect from "/" — not from sign-in/sign-up to avoid loops.
+        if (req.nextUrl.pathname === "/") {
+          const url = req.nextUrl.clone();
+          url.pathname = "/dashboard";
+          url.search = "";
+          return NextResponse.redirect(url);
+        }
       }
     })
   : () => NextResponse.next();

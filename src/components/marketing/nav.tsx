@@ -27,7 +27,7 @@ export function MarketingNav() {
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
         className={cn(
-          "flex w-full max-w-5xl items-center justify-between rounded-2xl px-4 py-2.5 transition-all duration-300",
+          "flex w-full max-w-7xl items-center justify-between rounded-2xl px-6 py-2.5 transition-all duration-300",
           scrolled
             ? "glass-strong shadow-2xl shadow-black/40"
             : "bg-transparent",

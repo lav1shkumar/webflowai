@@ -53,11 +53,6 @@ const features = [
     title: "Versioned changes",
     description: "Every generation is an auditable, reversible set of file changes.",
   },
-  {
-    icon: ShieldCheck,
-    title: "Production patterns",
-    description: "Strict TypeScript, error boundaries, and secure defaults baked in.",
-  },
 ];
 
 export function Features() {

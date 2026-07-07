@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { cn } from "@/lib/utils";
 
 export function Logo({
@@ -15,23 +16,21 @@ export function Logo({
       href={href}
       className={cn("group flex items-center gap-2.5", className)}
     >
-      <span className="relative flex h-8 w-8 items-center justify-center rounded-lg bg-brand-gradient shadow-lg shadow-primary/25">
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          className="h-5 w-5 text-white"
-          aria-hidden
-        >
-          <path
-            d="M4 7l4 10 4-10 4 10 4-10"
-            stroke="currentColor"
-            strokeWidth="2.2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-        <span className="absolute inset-0 rounded-lg ring-1 ring-inset ring-white/20" />
-      </span>
+      {/* Light mode: dark logo. Dark mode: light logo. */}
+      <Image
+        src="/webflowai_logo_dark.svg"
+        alt="WebFlowAI"
+        width={32}
+        height={32}
+        className="hidden dark:block rounded-lg"
+      />
+      <Image
+        src="/webflowai_logo_light.svg"
+        alt="WebFlowAI"
+        width={32}
+        height={32}
+        className="block dark:hidden rounded-lg"
+      />
       {showWordmark && (
         <span className="text-[15px] font-semibold tracking-tight">
           WebFlow<span className="text-gradient-brand">AI</span>

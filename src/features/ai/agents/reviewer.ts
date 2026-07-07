@@ -38,6 +38,7 @@ export const reviewerAgent: Agent<ReviewResult> = {
       return { kind: "reviewer", ok: true, output: review };
     } catch (err) {
       const message = err instanceof Error ? err.message : "Review failed";
+      console.error("[reviewer] Failed:", err);
       ctx.emit({ type: "error", agent: "reviewer", message });
       ctx.emit({ type: "phase", agent: "reviewer", phase: "failed" });
       return { kind: "reviewer", ok: false, error: message };
