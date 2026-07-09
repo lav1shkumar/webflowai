@@ -71,12 +71,7 @@ interface WorkspaceState {
 // ---------------------------------------------------------------------------
 
 const AGENT_LABELS: Record<AgentKind, string> = {
-  planner: "Planning",
-  architect: "Designing architecture",
   generator: "Generating code",
-  "file-operation": "Applying changes",
-  verifier: "Verifying",
-  reviewer: "Reviewing output",
 };
 
 function rebuildTree(files: Record<string, string>): FileNode[] {

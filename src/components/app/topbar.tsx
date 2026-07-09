@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Bell, Search, Settings, LogOut, CreditCard } from "lucide-react";
+import { Bell, Search, Settings, CreditCard } from "lucide-react";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -87,15 +87,7 @@ export function AppTopbar({ title }: { title?: string }) {
               </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            {viewer.authConfigured && viewer.signedIn ? (
-              <ClerkSignOutItem />
-            ) : (
-              <DropdownMenuItem asChild>
-                <Link href={routes.home}>
-                  <LogOut /> Sign out
-                </Link>
-              </DropdownMenuItem>
-            )}
+            <ClerkSignOutItem />
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

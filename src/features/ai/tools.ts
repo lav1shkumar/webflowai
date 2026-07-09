@@ -2,7 +2,7 @@ import { tool, type Tool } from "ai";
 import { z } from "zod";
 import { buildRepoMap, relevantPaths } from "./context";
 import { languageFromPath } from "../webcontainer/files";
-import type { AgentContext, AgentKind, ToolName } from "./types";
+import type { AgentKind, ToolContext, ToolName } from "./types";
 
 /**
  * Workspace file tools — the agent's hands on the codebase.
@@ -23,7 +23,7 @@ const MAX_SEARCH_RESULTS = 40;
 
 /** Build the tool set bound to a specific pipeline context. */
 export function createWorkspaceTools(
-  ctx: AgentContext,
+  ctx: ToolContext,
   agent: AgentKind,
 ): Record<ToolName, Tool> {
   const emitTool = (toolName: ToolName, detail: string) =>

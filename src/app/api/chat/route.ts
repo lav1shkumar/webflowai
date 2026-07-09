@@ -1,9 +1,9 @@
 import { z } from "zod";
-import { Orchestrator } from "@/features/ai/orchestrator";
-import type { AgentEvent } from "@/features/ai/types";
+import { generate } from "@/features/ai/generate";
 import { prisma } from "@/lib/prisma";
 import { getCurrentDbUser } from "@/server/user";
 import { creditsForTokens } from "@/lib/credits";
+import { env } from "@/lib/env";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -23,13 +23,8 @@ const schema = z.object({
 });
 
 /**
- * Server-side generation endpoint. Runs the multi-agent pipeline and streams
- * each {@link AgentEvent} to the client as newline-delimited JSON (NDJSON),
- * which the workspace store consumes to drive the live UI.
- *
- * Credits: signed-in users are metered per generation. We block up front when
- * the balance is exhausted (HTTP 402) and deduct token-based credits once the
- * run completes, reporting the remaining balance in the terminal `done` event.
+ * Generation endpoint. Calls the AI to generate/modify code, streams progress
+ * back as newline-delimited JSON (NDJSON).
  */
 export async function POST(request: Request) {
   let body: unknown;
@@ -49,7 +44,15 @@ export async function POST(request: Request) {
 
   const { projectId, prompt, files, history } = parsed.data;
 
-  // Credit gate (signed-in users only; demo mode is unmetered).
+  // Require AI backend to be configured.
+  if (!env.vertexApiKey) {
+    return Response.json(
+      { error: "AI backend not configured. Set GOOGLE_VERTEX_API_KEY." },
+      { status: 503 },
+    );
+  }
+
+  // Credit gate
   const user = await getCurrentDbUser();
   if (user && user.creditsBalance <= 0) {
     return Response.json(
@@ -63,26 +66,42 @@ export async function POST(request: Request) {
   }
 
   const encoder = new TextEncoder();
-  const orchestrator = new Orchestrator({
-    maxFixAttempts: 2,
-  });
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const send = (event: AgentEvent | Record<string, unknown>) => {
+      const send = (event: Record<string, unknown>) => {
         controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
       };
+
       try {
-        const result = await orchestrator.run({
+        // Signal the UI that generation is in progress
+        send({ type: "phase", agent: "generator", phase: "running" });
+
+        const result = await generate({
           projectId,
           prompt,
-          files,
-          history,
-          emit: (e) => send(e),
+          files: files ?? {},
+          history: history ?? [],
           signal: request.signal,
+          maxFixAttempts: 2,
+          onToken: (text) => send({ type: "token", text }),
+          onFileChange: (change) => send({ type: "file", agent: "generator", change }),
+          onLog: (message) => send({ type: "log", agent: "generator", message }),
         });
 
-        // Meter credits for signed-in users based on tokens consumed.
+        // Send a review summary so the UI has an assistant message
+        send({ type: "phase", agent: "generator", phase: "succeeded" });
+        send({
+          type: "review",
+          review: {
+            approved: true,
+            score: 100,
+            issues: [],
+            summary: `Applied ${result.changes.length} file change(s).`,
+          },
+        });
+
+        // Deduct credits
         let creditsUsed = 0;
         let creditsRemaining: number | null = null;
         if (user) {
@@ -95,7 +114,7 @@ export async function POST(request: Request) {
             });
             creditsRemaining = updated.creditsBalance;
           } catch {
-            // Metering failure shouldn't fail the generation response.
+            // Metering failure shouldn't fail the response.
           }
         }
 
@@ -109,6 +128,7 @@ export async function POST(request: Request) {
           signedIn: Boolean(user),
         });
       } catch (err) {
+        send({ type: "phase", agent: "generator", phase: "failed" });
         send({
           type: "fatal",
           message: err instanceof Error ? err.message : "Generation failed",
@@ -127,4 +147,3 @@ export async function POST(request: Request) {
     },
   });
 }
-

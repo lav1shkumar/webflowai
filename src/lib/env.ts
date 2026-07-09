@@ -33,12 +33,4 @@ export const env = {
 
   // Runtime
   isProd: process.env.NODE_ENV === "production",
-  appUrl: optional("NEXT_PUBLIC_APP_URL") ?? "http://localhost:3000",
 } as const;
-
-/** Whether the AI backend is configured. Used to gate live calls vs. demo mode. */
-export const isAiConfigured = Boolean(env.vertexApiKey);
-/** Whether Clerk is configured. Lets the app render in a public demo mode. */
-export const isAuthConfigured = Boolean(
-  env.clerkPublishableKey && env.clerkSecretKey,
-);

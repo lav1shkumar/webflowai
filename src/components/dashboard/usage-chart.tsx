@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import type { UsagePoint } from "@/lib/mock-data";
+import type { UsagePoint } from "@/server/usage";
 
 export function UsageChart({ data }: { data: UsagePoint[] }) {
   const max = Math.max(...data.map((d) => d.value), 1);

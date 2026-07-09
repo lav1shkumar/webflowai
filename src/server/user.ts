@@ -1,17 +1,13 @@
 import "server-only";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
-import { isAuthConfigured } from "@/lib/env";
 import type { User } from "@prisma/client";
 
 /**
  * Resolve the current Clerk user to a persisted Prisma {@link User}, creating
- * or updating the row on demand. Returns null when auth isn't configured or
- * there is no active session (the app's demo mode runs without persistence).
+ * or updating the row on demand. Returns null when there is no active session.
  */
 export async function getCurrentDbUser(): Promise<User | null> {
-  if (!isAuthConfigured) return null;
-
   const { userId } = await auth();
   if (!userId) return null;
 

@@ -10,13 +10,7 @@ import {
   clerkAppearanceLight,
 } from "@/lib/clerk-appearance";
 
-export function Providers({
-  children,
-  withAuth = false,
-}: {
-  children: React.ReactNode;
-  withAuth?: boolean;
-}) {
+export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider
       attribute="class"
@@ -24,7 +18,7 @@ export function Providers({
       enableSystem={false}
       disableTransitionOnChange
     >
-      <InnerProviders withAuth={withAuth}>{children}</InnerProviders>
+      <InnerProviders>{children}</InnerProviders>
       <ThemedToaster />
     </ThemeProvider>
   );
@@ -32,26 +26,18 @@ export function Providers({
 
 /**
  * Inner providers that have access to the resolved theme.
- * Conditionally wraps children with ClerkProvider using the correct appearance.
+ * Wraps children with ClerkProvider using the correct appearance.
  */
-function InnerProviders({
-  children,
-  withAuth,
-}: {
-  children: React.ReactNode;
-  withAuth: boolean;
-}) {
+function InnerProviders({ children }: { children: React.ReactNode }) {
   const { resolvedTheme } = useTheme();
   const appearance =
     resolvedTheme === "light" ? clerkAppearanceLight : clerkAppearanceDark;
 
-  const content = (
-    <TooltipProvider delayDuration={200}>{children}</TooltipProvider>
+  return (
+    <ClerkProvider appearance={appearance}>
+      <TooltipProvider delayDuration={200}>{children}</TooltipProvider>
+    </ClerkProvider>
   );
-
-  if (!withAuth) return content;
-
-  return <ClerkProvider appearance={appearance}>{content}</ClerkProvider>;
 }
 
 /** Toast surface that follows the active theme (light / dark / system). */

@@ -18,6 +18,7 @@ loadEnv({ override: true });
  * We set COOP/COEP headers globally so the in-browser runtime can boot.
  */
 const nextConfig: NextConfig = {
+  output: "standalone",
   reactStrictMode: true,
   poweredByHeader: false,
   experimental: {

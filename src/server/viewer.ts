@@ -1,12 +1,9 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
-import { isAuthConfigured } from "@/lib/env";
 import { getCurrentDbUser } from "@/server/user";
-import { demoUser, demoUsage } from "@/lib/mock-data";
+import { redirect } from "next/navigation";
 
 export interface Viewer {
-  signedIn: boolean;
-  authConfigured: boolean;
   name: string;
   email: string;
   avatarUrl: string | null;
@@ -25,26 +22,14 @@ function initialsFrom(value: string): string {
 }
 
 /**
- * Resolve the current viewer for UI display. Returns the real Clerk-backed
- * user when signed in; otherwise a demo identity so the app stays explorable
- * without authentication.
+ * Resolve the current viewer for UI display. Redirects to sign-in if
+ * there is no authenticated user.
  */
 export async function getViewer(): Promise<Viewer> {
   const user = await getCurrentDbUser();
 
   if (!user) {
-    return {
-      signedIn: false,
-      authConfigured: isAuthConfigured,
-      name: demoUser.name,
-      email: demoUser.email,
-      avatarUrl: null,
-      bio: "",
-      initials: demoUser.initials,
-      plan: demoUser.plan,
-      creditsBalance: demoUsage.creditsBalance,
-      creditsMonthly: demoUsage.creditsMonthly,
-    };
+    redirect("/sign-in");
   }
 
   const subscription = await prisma.subscription.findUnique({
@@ -54,8 +39,6 @@ export async function getViewer(): Promise<Viewer> {
 
   const name = user.name?.trim() || user.email.split("@")[0] || "Member";
   return {
-    signedIn: true,
-    authConfigured: isAuthConfigured,
     name,
     email: user.email,
     avatarUrl: user.avatarUrl,

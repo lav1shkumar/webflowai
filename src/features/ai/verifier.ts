@@ -1,4 +1,16 @@
-import type { VerificationIssue, VerificationResult } from "./types";
+export interface VerificationIssue {
+  severity: "error" | "warning";
+  kind: "syntax" | "import" | "json" | "dependency" | "config";
+  path: string;
+  message: string;
+  line?: number;
+}
+
+export interface VerificationResult {
+  ok: boolean;
+  issues: VerificationIssue[];
+  checked: number;
+}
 
 /**
  * Deterministic workspace verifier — the pipeline's *real* validation gate.

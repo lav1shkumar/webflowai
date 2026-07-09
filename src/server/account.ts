@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentDbUser } from "@/server/user";
-import { isAuthConfigured } from "@/lib/env";
 
 export type ActionResult =
   | { ok: true }
@@ -19,10 +18,6 @@ export async function updateProfile(input: {
   name: string;
   bio?: string;
 }): Promise<ActionResult> {
-  if (!isAuthConfigured) {
-    return { ok: false, error: "Sign in to edit your profile." };
-  }
-
   const user = await getCurrentDbUser();
   const { userId } = await auth();
   if (!user || !userId) {

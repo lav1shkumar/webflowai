@@ -69,9 +69,7 @@ export function ProfileForm({ viewer }: { viewer: Viewer }) {
               Change avatar
             </Button>
             <p className="mt-2 text-xs text-muted-foreground">
-              {viewer.authConfigured
-                ? "Managed by your Clerk account."
-                : "JPG, PNG or GIF. Max 2MB."}
+              Managed by your Clerk account.
             </p>
           </div>
         </div>

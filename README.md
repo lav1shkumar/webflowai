@@ -73,7 +73,6 @@ enable the corresponding real integration.
 | `WEBFLOWAI_MODEL` | Model id (default `gpt-4o-mini`) | Optional |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` / `CLERK_SECRET_KEY` | Enables real auth (otherwise demo auth) | Optional |
 | `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` / `RAZORPAY_WEBHOOK_SECRET` | Enables real billing | Optional |
-| `NEXT_PUBLIC_APP_URL` | Base URL (default `http://localhost:3000`) | Optional |
 
 The default `DATABASE_URL` already matches the Docker credentials:
 

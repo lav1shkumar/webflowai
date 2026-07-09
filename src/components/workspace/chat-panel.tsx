@@ -5,17 +5,12 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   ArrowUp,
-  BadgeCheck,
-  Brain,
   Check,
   Clock,
   Code2,
   Coins,
-  Compass,
-  FileCheck2,
   FileText,
   Loader2,
-  ShieldCheck,
   Sparkles,
   X,
   Zap,
@@ -252,14 +247,9 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   );
 }
 
-/** The fixed multi-agent pipeline, rendered as a living timeline. */
+/** The generation pipeline shown as a simple timeline. */
 const PIPELINE: { agent: AgentKind; label: string; Icon: LucideIcon }[] = [
-  { agent: "planner", label: "Planning", Icon: Brain },
-  { agent: "architect", label: "Designing architecture", Icon: Compass },
   { agent: "generator", label: "Generating code", Icon: Code2 },
-  { agent: "file-operation", label: "Applying changes", Icon: FileCheck2 },
-  { agent: "verifier", label: "Verifying", Icon: BadgeCheck },
-  { agent: "reviewer", label: "Reviewing", Icon: ShieldCheck },
 ];
 
 type StageStatus = ChatStep["status"] | "pending";
@@ -341,7 +331,7 @@ function AgentTimeline({
                   )}
                 </motion.span>
               </div>
-              <div className="min-w-0 flex-1 pb-4">
+              <div className="min-w-0 flex-1">
                 <div
                   className={cn(
                     "text-xs font-medium leading-6",
