@@ -38,12 +38,10 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/global-bundle.pem ./global-bundle.pem
 
 USER nextjs
+
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
-
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD curl -f http://127.0.0.1:3000/api/health || exit 1
 
 CMD ["sh", "-c", "HOSTNAME=0.0.0.0 node server.js"]
 
