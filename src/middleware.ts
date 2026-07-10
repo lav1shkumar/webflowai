@@ -12,11 +12,6 @@ const isProtectedRoute = createRouteMatcher([
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
-  // Health check must never depend on auth/Clerk — let it through untouched.
-  if (req.nextUrl.pathname === "/api/health") {
-    return NextResponse.next();
-  }
-
   const { userId, redirectToSignIn } = await auth();
 
   // Signed-out users hitting a protected route → sign-in
@@ -35,7 +30,10 @@ export default clerkMiddleware(async (auth, req) => {
 
 export const config = {
   matcher: [
-    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
-    "/(api|trpc)(.*)",
+    // Exclude _next internals, static assets, and the health check so the
+    // latter never depends on Clerk being configured.
+    "/((?!_next|api/health|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    // Run on API/trpc routes, but keep /api/health out of the middleware.
+    "/((?!api/health)(?:api|trpc))(.*)",
   ],
 };
