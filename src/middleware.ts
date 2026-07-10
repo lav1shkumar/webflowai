@@ -12,6 +12,11 @@ const isProtectedRoute = createRouteMatcher([
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
+  // Health check must never depend on auth/Clerk — let it through untouched.
+  if (req.nextUrl.pathname === "/api/health") {
+    return NextResponse.next();
+  }
+
   const { userId, redirectToSignIn } = await auth();
 
   // Signed-out users hitting a protected route → sign-in
