@@ -38,11 +38,26 @@ export async function getCurrentDbUser(): Promise<User | null> {
     console.log(`${LOG} user.upsert OK (${Date.now() - t2}ms)`);
     return user;
   } catch (err) {
-    // Email uniqueness collision or transient error — fall back to lookup.
-    console.error(`${LOG} user.upsert FAILED after ${Date.now() - t2}ms, falling back to findUnique`, err);
+    // Log the full error so the real cause (connection, TLS, constraint) is
+    // visible in the console instead of being silently swallowed.
+    console.error(`${LOG} user.upsert FAILED after ${Date.now() - t2}ms`, err);
+
+    // Fall back to a plain read (handles e.g. an email uniqueness collision on
+    // create). If this ALSO fails, rethrow so the error surfaces rather than
+    // returning null and triggering a redirect loop.
     const t3 = Date.now();
-    const user = await prisma.user.findUnique({ where: { clerkId: userId } });
-    console.log(`${LOG} user.findUnique done (${Date.now() - t3}ms), found=${Boolean(user)}`);
-    return user;
+    try {
+      const user = await prisma.user.findUnique({ where: { clerkId: userId } });
+      console.log(`${LOG} user.findUnique done (${Date.now() - t3}ms), found=${Boolean(user)}`);
+      if (user) return user;
+      // Signed in with Clerk but no row and we couldn't create one: this is a
+      // real error, not an "unauthenticated" state. Surface it.
+      throw new Error(
+        `No DB user for clerkId=${userId} and upsert failed; see the upsert error above.`,
+      );
+    } catch (err2) {
+      console.error(`${LOG} user.findUnique FAILED after ${Date.now() - t3}ms`, err2);
+      throw err2;
+    }
   }
 }
