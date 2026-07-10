@@ -28,14 +28,18 @@ RUN pnpm build
 FROM node:22-alpine AS runner
 WORKDIR /app
 
+RUN apk add --no-cache curl
 RUN addgroup -S nodejs && adduser -S nextjs -G nodejs
 
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
+COPY --from=builder /app/global-bundle.pem ./global-bundle.pem
 
 USER nextjs
+
 EXPOSE 3000
 ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
 
-CMD ["node", "server.js"]
+CMD ["sh", "-c", "HOSTNAME=0.0.0.0 node server.js"]
