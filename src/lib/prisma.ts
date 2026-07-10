@@ -1,28 +1,26 @@
+import "dotenv/config";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
-/**
- * Prisma 7 client singleton.
- *
- * Prisma 7 connects through a driver adapter rather than a `url` in the
- * schema. We use the node-postgres (`pg`) adapter, pointed at `DATABASE_URL`.
- * The singleton guard prevents exhausting the connection pool during
- * Next.js hot-reload in development.
- */
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined;
-};
+const url = process.env.DATABASE_URL!;
 
-function createPrismaClient(): PrismaClient {
-  const adapter = new PrismaPg({
-    connectionString: process.env.DATABASE_URL,
-  });
-  return new PrismaClient({
-    adapter,
-    log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
-  });
-}
+// AWS RDS global CA bundle, committed at the project root. Verifying against it
+// lets us keep certificate validation on instead of `rejectUnauthorized: false`.
 
-export const prisma = globalForPrisma.prisma ?? createPrismaClient();
+const ca = readFileSync(join(process.cwd(), "global-bundle.pem"), "utf8");
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+const adapter = new PrismaPg({
+  connectionString: url,
+  ssl: {
+    ca,
+    rejectUnauthorized: true,
+  },
+  connectionTimeoutMillis: 10_000,
+});
+
+const global = globalThis as unknown as { prisma?: PrismaClient };
+
+export const prisma =
+  global.prisma ?? (global.prisma = new PrismaClient({ adapter }));
