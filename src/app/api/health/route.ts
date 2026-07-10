@@ -1,4 +1,9 @@
+import { NextResponse } from 'next/server';
+
+
+export const dynamic = 'force-dynamic'; 
+
 export async function GET() {
   console.log(`[health] ping ${new Date().toISOString()}`);
-  return Response.json({ status: "healthy" }, { status: 200 });
+  return NextResponse.json({ status: 'healthy' }, { status: 200 });
 }

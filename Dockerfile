@@ -1,10 +1,20 @@
 # Base
-FROM node:22-alpine AS base
+FROM ubuntu:24.04 AS base
 
+ENV NODE_VERSION=22
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
+ENV DEBIAN_FRONTEND=noninteractive
 
-RUN corepack enable
+# Install Node.js from NodeSource and enable pnpm via corepack.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl ca-certificates gnupg \
+    && curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && npm install -g corepack \
+    && corepack enable \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 # Dependencies
 FROM base AS deps
@@ -25,10 +35,21 @@ RUN pnpm prisma generate
 RUN pnpm build
 
 # Runner
-FROM node:22-alpine AS runner
+FROM ubuntu:24.04 AS runner
 WORKDIR /app
 
-RUN addgroup -S nodejs && adduser -S nextjs -G nodejs
+ENV NODE_VERSION=22
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install Node.js runtime only.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl ca-certificates gnupg \
+    && curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -r nodejs && useradd -r -g nodejs nextjs
 
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
