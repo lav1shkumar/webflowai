@@ -28,6 +28,7 @@ RUN pnpm build
 FROM node:22-alpine AS runner
 WORKDIR /app
 
+RUN apk add --no-cache curl
 RUN addgroup -S nodejs && adduser -S nextjs -G nodejs
 
 COPY --from=builder /app/.next/standalone ./
