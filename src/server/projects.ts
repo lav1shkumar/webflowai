@@ -187,13 +187,20 @@ export async function deleteProject(
 
 /** List the current user's projects for dashboard / projects views. */
 export async function listProjects(): Promise<ProjectSummary[]> {
+  const LOG = "[projects]";
+  console.log(`${LOG} listProjects start`);
   const user = await getCurrentDbUser();
-  if (!user) return [];
+  if (!user) {
+    console.log(`${LOG} no user -> []`);
+    return [];
+  }
+  const t = Date.now();
   const projects = await prisma.project.findMany({
     where: { ownerId: user.id, status: { not: "ARCHIVED" } },
     orderBy: { updatedAt: "desc" },
     take: 50,
   });
+  console.log(`${LOG} project.findMany done (${Date.now() - t}ms), count=${projects.length}`);
   return projects.map((p) => ({
     id: p.id,
     name: p.name,

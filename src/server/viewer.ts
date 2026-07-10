@@ -26,16 +26,21 @@ function initialsFrom(value: string): string {
  * there is no authenticated user.
  */
 export async function getViewer(): Promise<Viewer> {
+  const LOG = "[viewer]";
+  console.log(`${LOG} getViewer start`);
   const user = await getCurrentDbUser();
 
   if (!user) {
+    console.log(`${LOG} no user -> redirect /sign-in`);
     redirect("/sign-in");
   }
 
+  const t = Date.now();
   const subscription = await prisma.subscription.findUnique({
     where: { userId: user.id },
     select: { plan: true },
   });
+  console.log(`${LOG} subscription.findUnique done (${Date.now() - t}ms)`);
 
   const name = user.name?.trim() || user.email.split("@")[0] || "Member";
   return {
