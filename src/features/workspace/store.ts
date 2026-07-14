@@ -391,6 +391,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           }));
           break;
         }
+        case "log":
+          terminalBus.writeLine(`\u001b[2m${event.message}\u001b[0m`);
+          break;
         case "review":
           updateAssistant({ content: event.review.summary });
           break;

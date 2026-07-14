@@ -248,8 +248,20 @@ function MessageBubble({ message }: { message: ChatMessage }) {
 }
 
 /** The generation pipeline shown as a simple timeline. */
-const PIPELINE: { agent: AgentKind; label: string; Icon: LucideIcon }[] = [
-  { agent: "generator", label: "Generating code", Icon: Code2 },
+const PIPELINE: {
+  agent: AgentKind;
+  label: string;
+  doneLabel: string;
+  errorLabel: string;
+  Icon: LucideIcon;
+}[] = [
+  {
+    agent: "generator",
+    label: "Generating code",
+    doneLabel: "Code generated",
+    errorLabel: "Generation failed",
+    Icon: Code2,
+  },
 ];
 
 type StageStatus = ChatStep["status"] | "pending";
@@ -280,6 +292,12 @@ function AgentTimeline({
           const error = status === "error";
           const isLast = i === PIPELINE.length - 1;
           const Icon = stage.Icon;
+
+          const label = done
+            ? stage.doneLabel
+            : error
+              ? stage.errorLabel
+              : stage.label;
 
           const subline = running
             ? "Working…"
@@ -342,7 +360,7 @@ function AgentTimeline({
                         : "text-muted-foreground",
                   )}
                 >
-                  {stage.label}
+                  {label}
                 </div>
                 <div className="-mt-0.5 text-[11px] text-muted-foreground">
                   {subline}

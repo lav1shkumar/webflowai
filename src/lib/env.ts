@@ -12,7 +12,7 @@ function optional(key: string): string | undefined {
 export const env = {
 
   vertexApiKey: optional("GOOGLE_VERTEX_API_KEY"),
-  aiModel: optional("WEBFLOWAI_MODEL") ?? "gemini-2.5-flash",
+  aiModel: optional("WEBFLOWAI_MODEL") ?? "gemini-3.5-flash",
 
   clerkPublishableKey: optional("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY"),
   clerkSecretKey: optional("CLERK_SECRET_KEY"),
