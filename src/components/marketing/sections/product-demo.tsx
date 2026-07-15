@@ -34,9 +34,9 @@ export function ProductDemo() {
                 <span className="text-xs text-emerald-400">● live</span>
               </div>
 
-              <div className="grid h-[440px] grid-cols-12 divide-x divide-border">
+              <div className="flex flex-col divide-y divide-border md:grid md:h-[440px] md:grid-cols-12 md:divide-x md:divide-y-0">
                 {/* Chat */}
-                <div className="col-span-4 flex flex-col p-4">
+                <div className="flex flex-col p-4 md:col-span-4">
                   <div className="mb-3 flex items-center gap-2 text-xs font-medium text-muted-foreground">
                     <MessagesSquare className="h-3.5 w-3.5" /> AI Chat
                   </div>
@@ -56,7 +56,7 @@ export function ProductDemo() {
                 </div>
 
                 {/* Editor */}
-                <div className="col-span-5 bg-background/30 p-4 font-mono text-xs leading-relaxed">
+                <div className="overflow-x-auto bg-background/30 p-4 font-mono text-xs leading-relaxed md:col-span-5">
                   <pre className="text-muted-foreground">
                     <span className="text-yellow-300">export function</span>{" "}
                     <span className="text-blue-400">Calendar</span>() {"{"}
@@ -74,7 +74,7 @@ export function ProductDemo() {
                 </div>
 
                 {/* Preview + terminal */}
-                <div className="col-span-3 flex flex-col">
+                <div className="flex flex-col md:col-span-3">
                   <div className="flex-1 bg-gradient-to-br from-emerald-500/10 to-teal-500/5 p-4">
                     <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
                       <Eye className="h-3.5 w-3.5" /> Preview
