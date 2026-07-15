@@ -129,34 +129,31 @@ async function callModel(opts: {
   let buffer = "";
   const emitted = new Set<string>();
 
+  // Emit any newly-completed file blocks to the UI.
+  const emitNewFiles = () => {
+    for (const change of parseFileBlocks(buffer, opts.files)) {
+      if (emitted.has(change.path)) continue;
+      emitted.add(change.path);
+      opts.onFileChange?.(change);
+    }
+  };
+
   for await (const delta of result.textStream) {
     buffer += delta;
     opts.onToken?.(delta);
-    // Emit each file the moment its code block closes, so the UI updates live.
-    emitNewFiles(buffer, opts.files, emitted, opts.onFileChange);
+    // Only re-parse when a fence arrives — that's the only time a block can
+    // close. Avoids re-parsing the whole buffer on every token.
+    if (opts.onFileChange && delta.includes("```")) emitNewFiles();
   }
+
+  // Final pass in case a closing fence was split across chunks.
+  if (opts.onFileChange) emitNewFiles();
 
   const usage = await result.usage;
   return {
     changes: parseFileBlocks(buffer, opts.files),
     tokens: usage?.totalTokens ?? 0,
   };
-}
-
-/** Parse the buffer so far and emit any file blocks not seen before. */
-function emitNewFiles(
-  buffer: string,
-  files: Record<string, string>,
-  emitted: Set<string>,
-  onFileChange?: (change: FileChange) => void,
-): void {
-  if (!onFileChange) return;
-  const changes = parseFileBlocks(buffer, files);
-  for (const change of changes) {
-    if (emitted.has(change.path)) continue;
-    emitted.add(change.path);
-    onFileChange(change);
-  }
 }
 
 /** Apply a set of changes to the in-memory file map. */
