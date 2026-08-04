@@ -5,6 +5,7 @@ import {
   createSandbox,
   killSandbox,
   readFiles,
+  replaceFiles,
   removeFiles,
   renameFile,
   runCommand,
@@ -18,24 +19,28 @@ const actionSchema = z.object({
   action: z.enum(["reconnect", "restart"]),
 });
 
+const pathSchema = z.string().min(1).refine(
+  (path) => !path.startsWith("/") && !path.split("/").includes(".."),
+);
+
 const patchSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("runCommand"), command: z.string().min(1) }),
   z.object({
     action: z.literal("readFiles"),
-    paths: z.array(z.string()).min(1),
+    paths: z.array(pathSchema).min(1),
   }),
   z.object({
     action: z.literal("writeFiles"),
-    files: z.record(z.string(), z.string()),
+    files: z.record(pathSchema, z.string()),
   }),
   z.object({
     action: z.literal("renameFile"),
-    oldPath: z.string().min(1),
-    newPath: z.string().min(1),
+    oldPath: pathSchema,
+    newPath: pathSchema,
   }),
   z.object({
     action: z.literal("removeFiles"),
-    paths: z.array(z.string()).min(1),
+    paths: z.array(pathSchema).min(1),
   }),
 ]);
 
@@ -46,6 +51,11 @@ async function getProject(sandboxId: string, ownerId: string) {
     where: { sandboxId, ownerId },
     select: { id: true },
   });
+}
+
+async function getFiles(projectId: string) {
+  const files = await prisma.file.findMany({ where: { projectId } });
+  return Object.fromEntries(files.map((file) => [file.path, file.content]));
 }
 
 function failed(error: unknown) {
@@ -70,6 +80,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     try {
       const sandbox = await Sandbox.connect(sandboxId);
       const info = await sandbox.getInfo();
+      await replaceFiles(sandboxId, await getFiles(project.id));
       return Response.json({
         projectId: project.id,
         sandboxId,
@@ -87,6 +98,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     const sandbox = await createSandbox(project.id, user.id);
 
     try {
+      await replaceFiles(sandbox.sandboxId, await getFiles(project.id));
       await prisma.project.update({
         where: { id: project.id },
         data: { sandboxId: sandbox.sandboxId },
@@ -127,8 +139,37 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       case "readFiles":
         return Response.json(await readFiles(sandboxId, parsed.data.paths));
       case "writeFiles":
+        await prisma.$transaction(
+          Object.entries(parsed.data.files).map(([path, content]) =>
+            prisma.file.upsert({
+              where: { projectId_path: { projectId: project.id, path } },
+              create: {
+                projectId: project.id,
+                path,
+                content,
+                size: content.length,
+              },
+              update: { content, size: content.length },
+            }),
+          ),
+        );
         return Response.json(await writeFiles(sandboxId, parsed.data.files));
-      case "renameFile":
+      case "renameFile": {
+        const file = await prisma.file.findUnique({
+          where: {
+            projectId_path: {
+              projectId: project.id,
+              path: parsed.data.oldPath,
+            },
+          },
+        });
+        if (!file) {
+          return Response.json({ error: "file-not-found" }, { status: 404 });
+        }
+        await prisma.file.update({
+          where: { id: file.id },
+          data: { path: parsed.data.newPath },
+        });
         return Response.json(
           await renameFile(
             sandboxId,
@@ -136,7 +177,14 @@ export async function PATCH(request: Request, { params }: RouteContext) {
             parsed.data.newPath,
           ),
         );
+      }
       case "removeFiles":
+        await prisma.file.deleteMany({
+          where: {
+            projectId: project.id,
+            path: { in: parsed.data.paths },
+          },
+        });
         await removeFiles(sandboxId, parsed.data.paths);
         return Response.json({ ok: true });
     }

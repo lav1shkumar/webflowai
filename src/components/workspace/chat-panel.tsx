@@ -16,7 +16,7 @@ import {
 import {
   useWorkspace,
   type ChatMessage,
-  type CreditsState,
+  type TokensState,
 } from "@/features/workspace/store";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -29,13 +29,11 @@ export function ChatPanel() {
   const messages = useWorkspace((s) => s.messages);
   const isGenerating = useWorkspace((s) => s.isGenerating);
   const sendPrompt = useWorkspace((s) => s.sendPrompt);
-  const credits = useWorkspace((s) => s.credits);
+  const tokens = useWorkspace((s) => s.tokens);
   const [value, setValue] = React.useState("");
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
-  const outOfCredits = Boolean(
-    credits?.signedIn && credits.balance <= 0,
-  );
+  const outOfTokens = Boolean(tokens?.signedIn && tokens.balance <= 0);
 
   React.useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -46,7 +44,7 @@ export function ChatPanel() {
 
   const submit = () => {
     const text = value.trim();
-    if (!text || isGenerating || outOfCredits) return;
+    if (!text || isGenerating || outOfTokens) return;
     setValue("");
     void sendPrompt(text);
   };
@@ -56,7 +54,7 @@ export function ChatPanel() {
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border px-3">
         <Sparkles className="h-4 w-4 text-primary" />
         <span className="text-sm font-medium">AI Chat</span>
-        <CreditsPill credits={credits} />
+        <TokensPill tokens={tokens} />
       </div>
 
       <div
@@ -69,7 +67,7 @@ export function ChatPanel() {
         ))}
       </div>
 
-      {outOfCredits ? (
+      {outOfTokens ? (
         <TopupGate />
       ) : (
         <div className="border-t border-border p-3">
@@ -106,9 +104,9 @@ export function ChatPanel() {
             <p className="text-[11px] text-muted-foreground">
               Enter to send · Shift+Enter for new line
             </p>
-            {credits?.signedIn && credits.balance > 0 && (
+            {tokens?.signedIn && tokens.balance > 0 && (
               <p className="text-[11px] text-muted-foreground">
-                {credits.balance} credits left
+                {tokens.balance} tokens left
               </p>
             )}
           </div>
@@ -118,14 +116,14 @@ export function ChatPanel() {
   );
 }
 
-function CreditsPill({ credits }: { credits: CreditsState | null }) {
-  if (!credits?.signedIn) return null;
-  const empty = credits.balance <= 0;
-  const low = !empty && credits.balance <= Math.max(20, credits.monthly * 0.1);
+function TokensPill({ tokens }: { tokens: TokensState | null }) {
+  if (!tokens?.signedIn) return null;
+  const empty = tokens.balance <= 0;
+  const low = !empty && tokens.balance <= 20;
   return (
     <Link
       href={BILLING_HREF}
-      title="Credits — manage plan"
+      title="Tokens — buy more"
       className={cn(
         "ml-auto inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors",
         empty
@@ -136,7 +134,7 @@ function CreditsPill({ credits }: { credits: CreditsState | null }) {
       )}
     >
       <Coins className="h-3 w-3" />
-      {Math.max(0, credits.balance)} credits
+      {Math.max(0, tokens.balance)} tokens
     </Link>
   );
 }
@@ -148,13 +146,13 @@ function TopupGate() {
         <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-full bg-amber-500/15">
           <Coins className="h-5 w-5 text-amber-400" />
         </div>
-        <p className="mt-2 text-sm font-medium">You&apos;re out of credits</p>
+        <p className="mt-2 text-sm font-medium">You&apos;re out of tokens</p>
         <p className="mx-auto mt-0.5 max-w-[240px] text-xs text-muted-foreground">
-          Top up your plan to keep building with AI. Your project is safe.
+          Buy more tokens to keep building with AI. Your project is safe.
         </p>
         <Button asChild variant="brand" size="sm" className="mt-3 w-full">
           <Link href={BILLING_HREF}>
-            <Zap className="h-3.5 w-3.5" /> Top up credits
+            <Zap className="h-3.5 w-3.5" /> Buy tokens
           </Link>
         </Button>
       </div>
@@ -220,7 +218,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
           </p>
         )}
 
-        {(typeof message.credits === "number" && message.credits > 0) ||
+        {(typeof message.tokens === "number" && message.tokens > 0) ||
         typeof message.durationMs === "number" ? (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             {typeof message.durationMs === "number" && (
@@ -229,10 +227,10 @@ function MessageBubble({ message }: { message: ChatMessage }) {
                 {formatDuration(message.durationMs)}
               </span>
             )}
-            {typeof message.credits === "number" && message.credits > 0 && (
+            {typeof message.tokens === "number" && message.tokens > 0 && (
               <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
                 <Coins className="h-3 w-3" />
-                {message.credits} credit{message.credits === 1 ? "" : "s"}
+                {message.tokens} token{message.tokens === 1 ? "" : "s"}
               </span>
             )}
           </div>

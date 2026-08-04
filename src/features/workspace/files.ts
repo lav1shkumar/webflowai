@@ -1,6 +1,3 @@
-import type { FileSystemTree } from "@webcontainer/api";
-
-/** A node in the visual file explorer tree. */
 export interface FileNode {
   name: string;
   path: string;
@@ -30,13 +27,11 @@ const EXT_LANGUAGE: Record<string, string> = {
   env: "dotenv",
 };
 
-/** Infer a syntax-highlighting language id from a file path. */
 export function languageFromPath(path: string): string {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
   return EXT_LANGUAGE[ext] ?? "plaintext";
 }
 
-/** Build a nested {@link FileNode} tree from a flat path→content map. */
 export function buildFileTree(files: Record<string, string>): FileNode[] {
   const root: FileNode = { name: "", path: "", type: "directory", children: [] };
 
@@ -65,11 +60,10 @@ export function buildFileTree(files: Record<string, string>): FileNode[] {
     }
   }
 
-  // Directories first, then alphabetical.
   const sortNodes = (nodes: FileNode[]): FileNode[] =>
     nodes
-      .map((n) =>
-        n.children ? { ...n, children: sortNodes(n.children) } : n,
+      .map((node) =>
+        node.children ? { ...node, children: sortNodes(node.children) } : node,
       )
       .sort((a, b) => {
         if (a.type !== b.type) return a.type === "directory" ? -1 : 1;
@@ -77,37 +71,4 @@ export function buildFileTree(files: Record<string, string>): FileNode[] {
       });
 
   return sortNodes(root.children ?? []);
-}
-
-/**
- * Convert a flat path→content map into a WebContainer {@link FileSystemTree}
- * suitable for `webcontainer.mount()`.
- */
-export function toFileSystemTree(
-  files: Record<string, string>,
-): FileSystemTree {
-  const tree: FileSystemTree = {};
-
-  for (const [path, contents] of Object.entries(files)) {
-    const segments = path.split("/").filter(Boolean);
-    let cursor: FileSystemTree = tree;
-
-    for (const [index, segment] of segments.entries()) {
-      const isLeaf = index === segments.length - 1;
-      if (isLeaf) {
-        cursor[segment] = { file: { contents } };
-      } else {
-        const existing = cursor[segment];
-        if (existing && "directory" in existing) {
-          cursor = existing.directory;
-        } else {
-          const dir: FileSystemTree = {};
-          cursor[segment] = { directory: dir };
-          cursor = dir;
-        }
-      }
-    }
-  }
-
-  return tree;
 }

@@ -18,7 +18,7 @@ const preferences = [
   {
     key: "email-usage",
     label: "Usage alerts",
-    description: "Notify me when I'm close to my credit limit.",
+    description: "Notify me when my token balance is running low.",
     default: true,
   },
   {

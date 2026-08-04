@@ -7,7 +7,7 @@ interface TerminalSubscriber {
 
 /**
  * A tiny pub/sub bridge between producers of terminal output (the
- * WebContainer process streams and the generation pipeline) and the xterm.js
+ * sandbox process streams and the generation pipeline) and the xterm.js
  * renderer. Output is raw — ANSI escape codes are preserved so xterm can
  * interpret cursor moves, line clears, colors, and spinners correctly.
  *

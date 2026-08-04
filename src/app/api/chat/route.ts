@@ -2,7 +2,7 @@ import { z } from "zod";
 import { generate } from "@/features/ai/generate";
 import { prisma } from "@/lib/prisma";
 import { getCurrentDbUser } from "@/server/user";
-import { creditsForTokens } from "@/lib/credits";
+import { usageTokensForModelTokens } from "@/lib/tokens";
 import type { GenerationEvent } from "@/features/ai/types";
 
 export const runtime = "nodejs";
@@ -50,14 +50,12 @@ export async function POST(request: Request) {
     );
   }
 
-  // Credit gate
   const user = await getCurrentDbUser();
-  if (user && user.creditsBalance <= 0) {
+  if (user && user.tokensBalance <= 0) {
     return Response.json(
       {
-        error: "insufficient-credits",
-        balance: user.creditsBalance,
-        monthly: user.creditsMonthly,
+        error: "insufficient-tokens",
+        balance: user.tokensBalance,
       },
       { status: 402 },
     );
@@ -84,18 +82,17 @@ export async function POST(request: Request) {
 
         send({ type: "status", status: "succeeded" });
 
-        // Deduct credits
-        let creditsUsed = 0;
-        let creditsRemaining: number | null = null;
+        let tokensUsed = 0;
+        let tokensRemaining: number | null = null;
         if (user) {
-          creditsUsed = creditsForTokens(result.tokens);
+          tokensUsed = usageTokensForModelTokens(result.tokens);
           try {
             const updated = await prisma.user.update({
               where: { id: user.id },
-              data: { creditsBalance: { decrement: creditsUsed } },
-              select: { creditsBalance: true },
+              data: { tokensBalance: { decrement: tokensUsed } },
+              select: { tokensBalance: true },
             });
-            creditsRemaining = updated.creditsBalance;
+            tokensRemaining = updated.tokensBalance;
           } catch {
             // Metering failure shouldn't fail the response.
           }
@@ -104,8 +101,8 @@ export async function POST(request: Request) {
         send({
           type: "done",
           summary: `Applied ${result.changes.length} file change(s).`,
-          creditsUsed,
-          creditsRemaining,
+          tokensUsed,
+          tokensRemaining,
           signedIn: Boolean(user),
         });
       } catch (err) {

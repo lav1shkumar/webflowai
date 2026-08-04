@@ -1,67 +1,29 @@
 import { prisma } from "@/lib/prisma";
-import { getPlan, type PlanId } from "./plans";
 
-export type PaidPlanId = Exclude<PlanId, "free">;
-
-export interface ActivateInput {
+interface FulfillInput {
   userId: string;
-  planId: PaidPlanId;
-  cycle: "monthly" | "annual";
-  /** Razorpay order id, used to reconcile the pending payment row. */
-  orderId?: string;
+  orderId: string;
   paymentId?: string;
   method?: string;
 }
 
-/**
- * Activate (or upgrade) a user's paid subscription and reconcile its payment.
- *
- * This is the single source of truth for "a payment succeeded", called from
- * both the client `verify` route (instant UX) and the Razorpay webhook
- * (reliable backstop). It is **idempotent**: running it twice for the same
- * order leaves the subscription/payment in the same state, so the two paths
- * can safely both fire.
- */
-export async function activatePaidSubscription(
-  input: ActivateInput,
-): Promise<void> {
-  const { userId, planId, cycle, orderId, paymentId, method } = input;
-  const plan = getPlan(planId);
-  if (!plan) return;
+export async function fulfillTokenPack(
+  input: FulfillInput,
+): Promise<number | null> {
+  const { userId, orderId, paymentId, method } = input;
+  return prisma.$transaction(async (tx) => {
+    const payment = await tx.payment.findFirst({
+      where: { userId, razorpayOrderId: orderId },
+      select: { id: true, status: true, tokens: true },
+    });
+    if (!payment) return null;
+    if (payment.status === "CAPTURED") return payment.tokens;
 
-  const amount = cycle === "annual" ? plan.priceAnnual : plan.priceMonthly;
-  const now = new Date();
-  const periodEnd = new Date(now);
-  if (cycle === "annual") periodEnd.setFullYear(periodEnd.getFullYear() + 1);
-  else periodEnd.setMonth(periodEnd.getMonth() + 1);
-
-  const planEnum = planId.toUpperCase() as "PRO" | "TEAM";
-  const cycleEnum = cycle === "annual" ? "ANNUAL" : "MONTHLY";
-
-  const subscription = await prisma.subscription.upsert({
-    where: { userId },
-    create: {
-      userId,
-      plan: planEnum,
-      status: "ACTIVE",
-      billingCycle: cycleEnum,
-      currentPeriodStart: now,
-      currentPeriodEnd: periodEnd,
-    },
-    update: {
-      plan: planEnum,
-      status: "ACTIVE",
-      billingCycle: cycleEnum,
-      currentPeriodStart: now,
-      currentPeriodEnd: periodEnd,
-      cancelAtPeriodEnd: false,
-    },
-  });
-
-  if (orderId) {
-    // Flip the pending payment recorded at checkout; create one if missing.
-    const updated = await prisma.payment.updateMany({
-      where: { subscriptionId: subscription.id, razorpayOrderId: orderId },
+    const updated = await tx.payment.updateMany({
+      where: {
+        id: payment.id,
+        status: { not: "CAPTURED" },
+      },
       data: {
         status: "CAPTURED",
         ...(paymentId ? { razorpayPaymentId: paymentId } : {}),
@@ -69,22 +31,18 @@ export async function activatePaidSubscription(
       },
     });
     if (updated.count === 0) {
-      await prisma.payment.create({
-        data: {
-          subscriptionId: subscription.id,
-          amount,
-          currency: "INR",
-          status: "CAPTURED",
-          razorpayOrderId: orderId,
-          ...(paymentId ? { razorpayPaymentId: paymentId } : {}),
-          ...(method ? { method } : {}),
-        },
+      const captured = await tx.payment.findUnique({
+        where: { id: payment.id },
+        select: { status: true, tokens: true },
       });
+      return captured?.status === "CAPTURED" ? captured.tokens : null;
     }
-  }
 
-  await prisma.user.update({
-    where: { id: userId },
-    data: { creditsMonthly: plan.credits, creditsBalance: plan.credits },
+    await tx.user.update({
+      where: { id: userId },
+      data: { tokensBalance: { increment: payment.tokens } },
+    });
+
+    return payment.tokens;
   });
 }

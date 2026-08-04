@@ -13,7 +13,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useWorkspace } from "@/features/workspace/store";
-import type { FileNode } from "@/features/webcontainer/files";
+import type { FileNode } from "@/features/workspace/files";
 import { cn } from "@/lib/utils";
 
 /** Placeholder used to materialize empty folders; hidden from the tree UI. */

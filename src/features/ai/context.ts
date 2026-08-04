@@ -1,4 +1,4 @@
-import { languageFromPath } from "../webcontainer/files";
+import { languageFromPath } from "../workspace/files";
 
 /**
  * Turns the in-memory workspace (a flat path→content map) into the compact
@@ -14,18 +14,19 @@ export const PER_FILE_CHARS = 16_000;
 /** Anchor files shown first when present. */
 const ENTRY_FILES = [
   "package.json",
-  "index.html",
-  "src/main.tsx",
-  "src/main.ts",
-  "src/App.tsx",
-  "src/App.ts",
-  "vite.config.ts",
+  "next.config.ts",
+  "next.config.mjs",
+  "next.config.js",
+  "app/layout.tsx",
+  "app/page.tsx",
+  "app/globals.css",
   "tsconfig.json",
 ];
 
 /** Noise that rarely helps the model and wastes budget. */
 const IGNORED_PATTERNS = [
   /(^|\/)node_modules\//,
+  /(^|\/)\.next\//,
   /(^|\/)\.git\//,
   /(^|\/)dist\//,
   /(^|\/)build\//,

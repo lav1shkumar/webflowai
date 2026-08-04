@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { ArrowUp, Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -14,6 +15,7 @@ import { createProject } from "@/server/projects";
  * an ephemeral in-memory workspace when persistence is unavailable (demo mode).
  */
 export function PromptComposer() {
+  const router = useRouter();
   const [value, setValue] = React.useState("");
   const [pending, setPending] = React.useState(false);
 
@@ -22,14 +24,12 @@ export function PromptComposer() {
     if (!text || pending) return;
     setPending(true);
     const params = new URLSearchParams({ prompt: text });
-    // Full-document navigation (not router.push) so the workspace loads with
-    // its COOP/COEP headers and is cross-origin isolated for WebContainers.
     try {
       const result = await createProject({ prompt: text });
       const id = result.ok ? result.id : shortId("proj");
-      window.location.assign(`/workspace/${id}?${params.toString()}`);
+      router.push(`/workspace/${id}?${params.toString()}`);
     } catch {
-      window.location.assign(`/workspace/${shortId("proj")}?${params.toString()}`);
+      router.push(`/workspace/${shortId("proj")}?${params.toString()}`);
     }
   };
 

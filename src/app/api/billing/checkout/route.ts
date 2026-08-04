@@ -3,10 +3,10 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getCurrentDbUser } from "@/server/user";
 import { createRazorpayCheckout } from "@/features/billing/razorpay";
+import { getTokenPack } from "@/features/billing/token-packs";
 
 const schema = z.object({
-  planId: z.enum(["free", "pro", "team"]),
-  cycle: z.enum(["monthly", "annual"]),
+  packId: z.enum(["starter", "builder", "scale"]),
 });
 
 /**
@@ -30,41 +30,31 @@ export async function POST(request: Request) {
     );
   }
 
-  const { planId, cycle } = parsed.data;
-
-  if (planId === "free") {
-    return NextResponse.json(
-      { error: "The Free plan does not require checkout." },
-      { status: 400 },
-    );
-  }
+  const { packId } = parsed.data;
+  const pack = getTokenPack(packId);
 
   try {
     const user = await getCurrentDbUser();
+    if (!user) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+
     const session = await createRazorpayCheckout({
-      planId,
-      cycle,
-      customerEmail: user?.email ?? "demo@webflowai.dev",
+      packId,
+      customerEmail: user.email,
     });
 
-    // Record the attempt as a pending payment (needs a subscription to hang
-    // off — create a baseline FREE subscription if the user has none yet).
-    if (user) {
-      const subscription = await prisma.subscription.upsert({
-        where: { userId: user.id },
-        update: {},
-        create: { userId: user.id, plan: "FREE", status: "ACTIVE" },
-      });
-      await prisma.payment.create({
-        data: {
-          subscriptionId: subscription.id,
-          amount: session.amount,
-          currency: session.currency,
-          status: "CREATED",
-          razorpayOrderId: session.referenceId,
-        },
-      });
-    }
+    await prisma.payment.create({
+      data: {
+        userId: user.id,
+        packId: pack.id,
+        tokens: pack.tokens,
+        amount: session.amount,
+        currency: session.currency,
+        status: "CREATED",
+        razorpayOrderId: session.referenceId,
+      },
+    });
 
     return NextResponse.json(session);
   } catch (err) {

@@ -49,7 +49,7 @@ export function Hero() {
             className="mx-auto mt-6 max-w-xl text-pretty text-lg text-muted-foreground lg:mx-0"
           >
             Turn ideas into production-ready applications using AI,
-            WebContainers, and a conversational development workflow.
+            cloud sandboxes, and a conversational development workflow.
           </motion.p>
 
           <motion.div

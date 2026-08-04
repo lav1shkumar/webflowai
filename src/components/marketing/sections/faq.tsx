@@ -9,11 +9,11 @@ import { cn } from "@/lib/utils";
 const faqs = [
   {
     q: "What exactly does WebFlowAI build?",
-    a: "Web applications using Vite, React, and TypeScript by default. The generation pipeline plans the files, writes the code, and then runs it live in your browser.",
+    a: "Web applications using Next.js, React, and TypeScript by default. The generation pipeline plans the files, writes the code, and then runs it live in your workspace.",
   },
   {
-    q: "How does the in-browser environment work?",
-    a: "We use WebContainers to run a real Node.js runtime directly in your browser tab. That means npm install, dev servers, and your app all run client-side — no remote sandbox to wait on.",
+    q: "How does the development environment work?",
+    a: "Each project runs in an isolated cloud sandbox with a real Node.js runtime, terminal, and live preview.",
   },
   {
     q: "Can I keep editing after generation?",
@@ -28,8 +28,8 @@ const faqs = [
     a: "Billing is India-first via Razorpay with UPI, cards, and net-banking.",
   },
   {
-    q: "Is there a free plan?",
-    a: "Yes — the Free plan includes 200 AI credits per month and up to 3 projects, with the full in-browser runtime. Upgrade any time.",
+    q: "Can I try WebFlowAI for free?",
+    a: "Yes — new accounts include 200 AI tokens. There is no subscription, and you can buy more tokens whenever you need them.",
   },
 ];
 

@@ -73,7 +73,9 @@ export function AppTopbar({ title }: { title?: string }) {
               </div>
             </DropdownMenuLabel>
             <div className="px-2.5 pb-1.5">
-              <Badge variant="default">{viewer.plan} plan</Badge>
+              <Badge variant="default">
+                {viewer.tokensBalance.toLocaleString()} tokens
+              </Badge>
             </div>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>

@@ -1,11 +1,10 @@
 "use client";
 
 import { create } from "zustand";
-import { webContainerService, type ServerStatus } from "@/features/webcontainer/service";
-import { buildFileTree, type FileNode } from "@/features/webcontainer/files";
+import { buildFileTree, type FileNode } from "@/features/workspace/files";
 import { terminalBus } from "@/features/workspace/terminal-bus";
 import { getProjectState, saveProjectState } from "@/server/projects";
-import { getCredits } from "@/server/credits";
+import { getTokens } from "@/server/tokens";
 import type { GenerationEvent } from "@/features/ai/types";
 import { shortId } from "@/lib/utils";
 
@@ -13,10 +12,9 @@ import { shortId } from "@/lib/utils";
 // Types
 // ---------------------------------------------------------------------------
 
-export interface CreditsState {
+export interface TokensState {
   signedIn: boolean;
   balance: number;
-  monthly: number;
 }
 
 export interface ChatMessage {
@@ -25,13 +23,21 @@ export interface ChatMessage {
   content: string;
   status?: "running" | "done" | "error";
   files?: string[];
-  credits?: number;
+  tokens?: number;
   durationMs?: number;
   createdAt: number;
 }
 
+export type ServerStatus =
+  | "idle"
+  | "installing"
+  | "starting"
+  | "ready"
+  | "error";
+
 interface WorkspaceState {
   projectId: string | null;
+  sandboxId: string | null;
   files: Record<string, string>;
   tree: FileNode[];
   activeFilePath: string | null;
@@ -39,7 +45,7 @@ interface WorkspaceState {
   serverStatus: ServerStatus;
   previewUrl: string | null;
   isGenerating: boolean;
-  credits: CreditsState | null;
+  tokens: TokensState | null;
 
   // lifecycle
   init: (projectId: string, initialPrompt?: string) => void;
@@ -64,18 +70,40 @@ interface WorkspaceState {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const containerSyncTimers = new Map<string, ReturnType<typeof setTimeout>>();
-function scheduleContainerSync(path: string, content: string): void {
-  if (!webContainerService.isMounted) return;
-  const existing = containerSyncTimers.get(path);
+const sandboxSyncTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+async function patchSandbox(sandboxId: string, body: unknown) {
+  const response = await fetch(`/api/sandboxes/${sandboxId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(`Sandbox sync failed (${response.status})`);
+}
+
+function scheduleSandboxWrite(
+  sandboxId: string,
+  path: string,
+  content: string,
+) {
+  const existing = sandboxSyncTimers.get(path);
   if (existing) clearTimeout(existing);
-  containerSyncTimers.set(
+  sandboxSyncTimers.set(
     path,
     setTimeout(() => {
-      containerSyncTimers.delete(path);
-      void webContainerService.syncFile(path, content);
+      sandboxSyncTimers.delete(path);
+      void patchSandbox(sandboxId, {
+        action: "writeFiles",
+        files: { [path]: content },
+      }).catch(() => {});
     }, 200),
   );
+}
+
+function cancelSandboxWrite(path: string) {
+  const timer = sandboxSyncTimers.get(path);
+  if (timer) clearTimeout(timer);
+  sandboxSyncTimers.delete(path);
 }
 
 function depsSignature(pkg: string): string {
@@ -104,9 +132,50 @@ function dependenciesChanged(before: string, after: string): boolean {
 
 interface ServerRunOutput {
   summary: string;
-  creditsUsed: number | null;
-  creditsRemaining: number | null;
+  tokensUsed: number | null;
+  tokensRemaining: number | null;
   signedIn: boolean;
+}
+
+type PreviewEvent =
+  | { type: "status"; status: ServerStatus }
+  | { type: "log"; data: string }
+  | { type: "ready"; url: string }
+  | { type: "error"; message: string };
+
+async function streamPreview(
+  sandboxId: string,
+  onEvent: (event: PreviewEvent) => void,
+) {
+  const response = await fetch(`/api/sandboxes/${sandboxId}/preview`, {
+    method: "POST",
+  });
+  if (!response.ok || !response.body) {
+    throw new Error(`Preview request failed (${response.status})`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  const handleLine = (line: string) => {
+    if (!line.trim()) return;
+    const event = JSON.parse(line) as PreviewEvent;
+    if (event.type === "error") throw new Error(event.message);
+    onEvent(event);
+  };
+
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let newline: number;
+    while ((newline = buffer.indexOf("\n")) >= 0) {
+      handleLine(buffer.slice(0, newline));
+      buffer = buffer.slice(newline + 1);
+    }
+  }
+  if (buffer) handleLine(buffer);
 }
 
 async function runViaServer(
@@ -124,7 +193,7 @@ async function runViaServer(
 
   if (res.status === 402) {
     const data = (await res.json().catch(() => ({}))) as { balance?: number };
-    throw new InsufficientCreditsError(Number(data.balance ?? 0));
+    throw new InsufficientTokensError(Number(data.balance ?? 0));
   }
 
   if (!res.ok || !res.body) {
@@ -136,8 +205,8 @@ async function runViaServer(
   let buffer = "";
   const result: ServerRunOutput = {
     summary: "Generation completed.",
-    creditsUsed: null,
-    creditsRemaining: null,
+    tokensUsed: null,
+    tokensRemaining: null,
     signedIn: false,
   };
 
@@ -157,8 +226,8 @@ async function runViaServer(
     if (event.type === "done") {
       result.summary = event.summary;
       result.signedIn = event.signedIn;
-      result.creditsUsed = event.creditsUsed;
-      result.creditsRemaining = event.creditsRemaining;
+      result.tokensUsed = event.tokensUsed;
+      result.tokensRemaining = event.tokensRemaining;
       return;
     }
     onEvent(event);
@@ -179,11 +248,11 @@ async function runViaServer(
   return result;
 }
 
-class InsufficientCreditsError extends Error {
+class InsufficientTokensError extends Error {
   balance: number;
   constructor(balance: number) {
-    super("insufficient-credits");
-    this.name = "InsufficientCreditsError";
+    super("insufficient-tokens");
+    this.name = "InsufficientTokensError";
     this.balance = balance;
   }
 }
@@ -197,6 +266,7 @@ const seededProjects = new Set<string>();
 
 export const useWorkspace = create<WorkspaceState>((set, get) => ({
   projectId: null,
+  sandboxId: null,
   files: {},
   tree: [],
   activeFilePath: null,
@@ -204,14 +274,18 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   serverStatus: "idle",
   previewUrl: null,
   isGenerating: false,
-  credits: null,
+  tokens: null,
 
   init: (projectId, initialPrompt) => {
     // Already on this project — nothing to do.
     if (get().projectId === projectId) return;
 
+    for (const timer of sandboxSyncTimers.values()) clearTimeout(timer);
+    sandboxSyncTimers.clear();
+
     set({
       projectId,
+      sandboxId: null,
       files: {},
       tree: [],
       activeFilePath: null,
@@ -223,17 +297,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     terminalBus.clear();
     terminalBus.writeLine("\u001b[2mWelcome to the WebFlowAI workspace.\u001b[0m");
 
-    webContainerService.setCallbacks({
-      onStatus: (serverStatus) => set({ serverStatus }),
-      onOutput: (chunk) => terminalBus.write(chunk),
-      onServerReady: (url) => set({ previewUrl: url, serverStatus: "ready" }),
-      onError: (message) => terminalBus.writeLine(`\u001b[31m${message}\u001b[0m`),
-    });
-
-    // Load credits.
     void (async () => {
       try {
-        set({ credits: await getCredits() });
+        set({ tokens: await getTokens() });
       } catch { /* unavailable */ }
     })();
 
@@ -253,6 +319,45 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
             })),
             activeFilePath: Object.keys(state.files)[0] ?? null,
           });
+
+          try {
+            let response = state.sandboxId
+              ? await fetch(`/api/sandboxes/${state.sandboxId}`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ action: "reconnect" }),
+                })
+              : await fetch("/api/sandboxes", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ projectId }),
+                });
+
+            if (response.status === 410 && state.sandboxId) {
+              response = await fetch(`/api/sandboxes/${state.sandboxId}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "restart" }),
+              });
+            }
+
+            if (response.ok) {
+              const data = (await response.json()) as {
+                sandboxId: string;
+                files?: Record<string, string>;
+              };
+              if (get().projectId === projectId) {
+                const files = data.files ?? get().files;
+                set({
+                  sandboxId: data.sandboxId,
+                  files,
+                  tree: buildFileTree(files),
+                  activeFilePath:
+                    get().activeFilePath ?? Object.keys(files)[0] ?? null,
+                });
+              }
+            }
+          } catch { /* sandbox unavailable */ }
         }
       } catch { /* run in-memory */ }
 
@@ -273,8 +378,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const projectId = get().projectId;
     if (!projectId || get().isGenerating) return;
 
-    const credits = get().credits;
-    if (credits?.signedIn && credits.balance <= 0) {
+    const tokens = get().tokens;
+    if (tokens?.signedIn && tokens.balance <= 0) {
       return;
     }
 
@@ -299,6 +404,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }));
 
     const startedAt = Date.now();
+    const deletedPaths = new Set<string>();
 
     const updateAssistant = (patch: Partial<ChatMessage>) =>
       set((s) => ({
@@ -322,6 +428,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         case "file": {
           const { change } = event;
           const content = change.op === "delete" ? "" : (change.content ?? "");
+          if (change.op === "delete") deletedPaths.add(change.path);
+          else deletedPaths.delete(change.path);
           set((s) => {
             const files = { ...s.files };
             if (change.op === "delete") {
@@ -335,11 +443,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
               activeFilePath: s.activeFilePath ?? change.path,
             };
           });
-          if (change.op === "delete") {
-            void webContainerService.syncDelete(change.path);
-          } else {
-            void webContainerService.syncFile(change.path, content);
-          }
           set((s) => ({
             messages: s.messages.map((m) =>
               m.id === assistantId
@@ -349,43 +452,46 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           }));
           break;
         }
-        case "log":
-          terminalBus.writeLine(`\u001b[2m${event.message}\u001b[0m`);
-          break;
       }
     };
 
     const pkgBefore = get().files["package.json"] ?? "";
 
     try {
-      const { summary, creditsUsed, creditsRemaining, signedIn } =
+      const { summary, tokensUsed, tokensRemaining, signedIn } =
         await runViaServer({ prompt, files: get().files }, onEvent);
+
+      const sandboxId = get().sandboxId;
+      if (sandboxId) {
+        if (deletedPaths.size > 0) {
+          await patchSandbox(sandboxId, {
+            action: "removeFiles",
+            paths: [...deletedPaths],
+          });
+        }
+        const files = get().files;
+        if (Object.keys(files).length > 0) {
+          await patchSandbox(sandboxId, { action: "writeFiles", files });
+        }
+      }
 
       updateAssistant({
         content: summary,
-        ...(creditsUsed != null ? { credits: creditsUsed } : {}),
+        ...(tokensUsed != null ? { tokens: tokensUsed } : {}),
       });
 
-      if (signedIn && creditsRemaining != null) {
-        set((s) => ({
-          credits: {
-            signedIn: true,
-            balance: creditsRemaining,
-            monthly: s.credits?.monthly ?? creditsRemaining,
-          },
-        }));
+      if (signedIn && tokensRemaining != null) {
+        set({
+          tokens: { signedIn: true, balance: tokensRemaining },
+        });
       }
     } catch (serverErr) {
-      if (serverErr instanceof InsufficientCreditsError) {
-        set((s) => ({
-          credits: {
-            signedIn: true,
-            balance: serverErr.balance,
-            monthly: s.credits?.monthly ?? 0,
-          },
-        }));
+      if (serverErr instanceof InsufficientTokensError) {
+        set({
+          tokens: { signedIn: true, balance: serverErr.balance },
+        });
         updateAssistant({
-          content: "You're out of credits. Top up your plan to continue generating.",
+          content: "You're out of tokens. Buy more tokens to continue generating.",
           status: "error",
         });
         return;
@@ -402,12 +508,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       set({ isGenerating: false });
       updateAssistant({ durationMs: Date.now() - startedAt });
 
-      if (webContainerService.isMounted) {
-        const pkgAfter = get().files["package.json"] ?? "";
-        if (dependenciesChanged(pkgBefore, pkgAfter)) {
-          terminalBus.writeLine("\u001b[36m[preview] Dependencies changed — reinstalling…\u001b[0m");
-          void webContainerService.resyncDependencies();
-        }
+      const pkgAfter = get().files["package.json"] ?? "";
+      if (
+        get().serverStatus === "ready" &&
+        dependenciesChanged(pkgBefore, pkgAfter)
+      ) {
+        terminalBus.writeLine("\u001b[36m[preview] Dependencies changed — restarting…\u001b[0m");
+        void get().restartPreview();
       }
 
       void (async () => {
@@ -431,7 +538,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const files = { ...s.files, [path]: content };
       return { files, tree: buildFileTree(files) };
     });
-    scheduleContainerSync(path, content);
+    const sandboxId = get().sandboxId;
+    if (sandboxId) scheduleSandboxWrite(sandboxId, path, content);
   },
 
   createFile: (path) => {
@@ -440,7 +548,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const files = { ...s.files, [path]: "" };
       return { files, tree: buildFileTree(files), activeFilePath: path };
     });
-    void webContainerService.syncFile(path, "");
+    const sandboxId = get().sandboxId;
+    if (sandboxId) {
+      void patchSandbox(sandboxId, {
+        action: "writeFiles",
+        files: { [path]: "" },
+      }).catch(() => {});
+    }
   },
 
   createFolder: (path) => {
@@ -452,7 +566,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const files = { ...s.files, [keep]: "" };
       return { files, tree: buildFileTree(files) };
     });
-    void webContainerService.syncFile(keep, "");
+    const sandboxId = get().sandboxId;
+    if (sandboxId) {
+      void patchSandbox(sandboxId, {
+        action: "writeFiles",
+        files: { [keep]: "" },
+      }).catch(() => {});
+    }
   },
 
   deleteFile: (path) => {
@@ -462,7 +582,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const activeFilePath = s.activeFilePath === path ? null : s.activeFilePath;
       return { files, tree: buildFileTree(files), activeFilePath };
     });
-    void webContainerService.syncDelete(path);
+    cancelSandboxWrite(path);
+    const sandboxId = get().sandboxId;
+    if (sandboxId) {
+      void patchSandbox(sandboxId, {
+        action: "removeFiles",
+        paths: [path],
+      }).catch(() => {});
+    }
   },
 
   deleteFolder: (path) => {
@@ -480,7 +607,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           : s.activeFilePath;
       return { files, tree: buildFileTree(files), activeFilePath };
     });
-    for (const p of targets) void webContainerService.syncDelete(p);
+    for (const p of targets) cancelSandboxWrite(p);
+    const sandboxId = get().sandboxId;
+    if (sandboxId) {
+      void patchSandbox(sandboxId, {
+        action: "removeFiles",
+        paths: targets,
+      }).catch(() => {});
+    }
   },
 
   renameFile: (from, to) => {
@@ -493,8 +627,15 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const activeFilePath = s.activeFilePath === from ? to : s.activeFilePath;
       return { files, tree: buildFileTree(files), activeFilePath };
     });
-    void webContainerService.syncDelete(from);
-    void webContainerService.syncFile(to, content);
+    cancelSandboxWrite(from);
+    const sandboxId = get().sandboxId;
+    if (sandboxId) {
+      void patchSandbox(sandboxId, {
+        action: "renameFile",
+        oldPath: from,
+        newPath: to,
+      }).catch(() => {});
+    }
   },
 
   renameFolder: (from, to) => {
@@ -524,21 +665,62 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     });
 
     for (const m of moves) {
-      void webContainerService.syncDelete(m.from);
-      void webContainerService.syncFile(m.to, get().files[m.to] ?? "");
+      cancelSandboxWrite(m.from);
+      const sandboxId = get().sandboxId;
+      if (sandboxId) {
+        void patchSandbox(sandboxId, {
+          action: "renameFile",
+          oldPath: m.from,
+          newPath: m.to,
+        }).catch(() => {});
+      }
     }
   },
 
   bootPreview: async () => {
-    if (!webContainerService.isSupported) {
-      terminalBus.writeLine(
-        "\u001b[33mWebContainers require a cross-origin-isolated context. Preview runs in supported browsers.\u001b[0m",
-      );
+    let sandboxId = get().sandboxId;
+    const projectId = get().projectId;
+    if (!sandboxId && projectId) {
+      try {
+        const state = await getProjectState(projectId);
+        if (state?.sandboxId) {
+          let response = await fetch(`/api/sandboxes/${state.sandboxId}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "reconnect" }),
+          });
+          if (response.status === 410) {
+            response = await fetch(`/api/sandboxes/${state.sandboxId}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "restart" }),
+            });
+          }
+          if (response.ok) {
+            const data = (await response.json()) as { sandboxId: string };
+            sandboxId = data.sandboxId;
+            set({ sandboxId });
+          }
+        }
+      } catch { /* sandbox unavailable */ }
+    }
+    if (!sandboxId) {
+      set({ serverStatus: "error" });
+      terminalBus.writeLine("\u001b[31mSandbox is not ready.\u001b[0m");
       return;
     }
+
+    set({ serverStatus: "installing", previewUrl: null });
     try {
-      await webContainerService.start(get().files);
+      await streamPreview(sandboxId, (event) => {
+        if (event.type === "status") set({ serverStatus: event.status });
+        if (event.type === "log") terminalBus.write(event.data);
+        if (event.type === "ready") {
+          set({ previewUrl: event.url, serverStatus: "ready" });
+        }
+      });
     } catch (err) {
+      set({ serverStatus: "error" });
       terminalBus.writeLine(
         `\u001b[31m${err instanceof Error ? err.message : "Preview failed to boot"}\u001b[0m`,
       );
@@ -547,6 +729,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   restartPreview: async () => {
     set({ serverStatus: "starting", previewUrl: null });
-    await webContainerService.restart();
+    await get().bootPreview();
   },
 }));

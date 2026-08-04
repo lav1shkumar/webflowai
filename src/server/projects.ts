@@ -17,6 +17,7 @@ export interface ProjectSummary {
 
 export interface ProjectState {
   id: string;
+  sandboxId: string | null;
   name: string;
   prompt: string | null;
   files: Record<string, string>;
@@ -127,8 +128,7 @@ export async function createProject(input: {
       templateId: input.templateId ?? null,
       ownerId: user.id,
       status: "DRAFT",
-      // The generation pipeline scaffolds Vite + React SPAs.
-      framework: "vite",
+      framework: "next",
     },
   });
 
@@ -234,6 +234,7 @@ export async function getProjectState(id: string): Promise<ProjectState | null> 
 
   return {
     id: project.id,
+    sandboxId: project.sandboxId,
     name: project.name,
     prompt: project.prompt,
     files: Object.fromEntries(project.files.map((f) => [f.path, f.content])),

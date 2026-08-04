@@ -17,14 +17,8 @@ export async function getPayments(): Promise<PaymentRecord[]> {
   const user = await getCurrentDbUser();
   if (!user) return [];
 
-  const subscription = await prisma.subscription.findUnique({
-    where: { userId: user.id },
-    select: { id: true },
-  });
-  if (!subscription) return [];
-
   const payments = await prisma.payment.findMany({
-    where: { subscriptionId: subscription.id },
+    where: { userId: user.id },
     orderBy: { createdAt: "desc" },
     take: 50,
   });

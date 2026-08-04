@@ -13,8 +13,8 @@ export type GenerationEvent =
   | {
       type: "done";
       summary: string;
-      creditsUsed: number;
-      creditsRemaining: number | null;
+      tokensUsed: number;
+      tokensRemaining: number | null;
       signedIn: boolean;
     }
   | { type: "error"; message: string };

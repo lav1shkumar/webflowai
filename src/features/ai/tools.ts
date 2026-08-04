@@ -1,7 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { buildRepoMap, relevantPaths } from "./context";
-import { languageFromPath } from "../webcontainer/files";
+import { languageFromPath } from "../workspace/files";
 
 /**
  * Workspace file tools — the agent's hands on the codebase.
@@ -44,7 +44,7 @@ export function createWorkspaceTools(files: Record<string, string>) {
     inputSchema: z.object({
       path: z
         .string()
-        .describe("Exact workspace-relative file path, e.g. 'src/App.tsx'."),
+        .describe("Exact workspace-relative file path, e.g. 'app/page.tsx'."),
     }),
     execute: async ({ path }) => {
       const content = files[path];

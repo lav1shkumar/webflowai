@@ -7,7 +7,7 @@ import Editor, {
 } from "@monaco-editor/react";
 import { useTheme } from "next-themes";
 import { useWorkspace } from "@/features/workspace/store";
-import { languageFromPath } from "@/features/webcontainer/files";
+import { languageFromPath } from "@/features/workspace/files";
 
 const DARK_THEME = "webflowai-dark";
 const LIGHT_THEME = "webflowai-light";
@@ -36,7 +36,7 @@ const EDITOR_OPTIONS: EditorProps["options"] = {
 
 const configureMonaco: BeforeMount = (monaco) => {
   // Monaco lacks the generated project's tsconfig and installed types, so its
-  // diagnostics would be false positives. The WebContainer handles checks.
+  // diagnostics would be false positives. The remote runtime handles checks.
   for (const defaults of [
     monaco.languages.typescript.typescriptDefaults,
     monaco.languages.typescript.javascriptDefaults,

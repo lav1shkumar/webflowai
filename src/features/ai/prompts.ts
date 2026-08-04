@@ -7,12 +7,12 @@ import { buildCodebaseContext } from "./context";
 
 const OUTPUT_FORMAT = `OUTPUT FORMAT — emit ONLY fenced code blocks, one per file:
 
-\`\`\`tsx path=src/App.tsx
+\`\`\`tsx path=app/page.tsx
 // full file contents here
 \`\`\`
 
 To delete a file:
-\`\`\`delete path=src/Old.tsx
+\`\`\`delete path=app/old-page.tsx
 \`\`\``;
 
 const TOOLS = `TOOLS — you have read access to the workspace:
@@ -29,9 +29,10 @@ export function buildPrompt(
 
   const mode = isNew
     ? `You are building a NEW app from scratch.
-Create a Vite + React + TypeScript single-page app (runs in a WebContainer — no SSR/Next.js).
-Include all required files: package.json, vite.config.ts, index.html, tsconfig.json, src/main.tsx, src/App.tsx, plus components as needed.
-The "dev" script must be exactly: vite --host --port 3000`
+Create a Next.js + React + TypeScript app using the App Router (runs in a remote E2B sandbox).
+Include all required files: package.json, next.config.ts, tsconfig.json, app/layout.tsx, app/page.tsx, app/globals.css, plus components as needed.
+The "dev" script must be exactly: next dev
+Use Server Components by default and add "use client" only when browser APIs, state, or effects require it.`
     : `You are MODIFYING an existing codebase.
 Make the smallest set of changes that fully satisfies the request.
 Read files with the read_file tool before modifying them. Only emit files you change or create.`;

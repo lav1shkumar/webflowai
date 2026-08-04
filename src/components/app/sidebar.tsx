@@ -25,10 +25,6 @@ const nav = [
 export function AppSidebar() {
   const pathname = usePathname();
   const viewer = useViewer();
-  const creditPct = Math.min(
-    100,
-    Math.round((viewer.creditsBalance / Math.max(1, viewer.creditsMonthly)) * 100),
-  );
 
   return (
     <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-card/50 p-4 md:flex">
@@ -68,19 +64,13 @@ export function AppSidebar() {
 
       <div className="rounded-xl border border-border bg-card/50 p-4">
         <div className="flex items-center justify-between text-xs">
-          <span className="text-muted-foreground">AI Credits</span>
+          <span className="text-muted-foreground">AI Tokens</span>
           <span className="font-medium text-foreground">
-            {viewer.creditsBalance} / {viewer.creditsMonthly}
+            {viewer.tokensBalance.toLocaleString()}
           </span>
         </div>
-        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-foreground/[0.06]">
-          <div
-            className="h-full bg-brand-gradient"
-            style={{ width: `${creditPct}%` }}
-          />
-        </div>
         <Button asChild size="sm" variant="outline" className="mt-3 w-full">
-          <Link href={routes.billing}>Upgrade plan</Link>
+          <Link href={routes.billing}>Buy tokens</Link>
         </Button>
       </div>
     </aside>

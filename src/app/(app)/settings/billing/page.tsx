@@ -7,9 +7,11 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
-import { Switch } from "@/components/ui/switch";
-import { plans, getPlan, type PlanId } from "@/features/billing/plans";
+import {
+  tokenPacks,
+  getTokenPack,
+  type TokenPackId,
+} from "@/features/billing/token-packs";
 import {
   loadRazorpayScript,
   openRazorpayCheckout,
@@ -21,11 +23,7 @@ import { cn, formatINR } from "@/lib/utils";
 export default function BillingSettingsPage() {
   const viewer = useViewer();
   const router = useRouter();
-  const currentPlan = viewer.plan.toLowerCase() as PlanId;
-  const currentPlanDef = getPlan(currentPlan);
-  const isPaid = currentPlan !== "free";
-  const [annual, setAnnual] = React.useState(false);
-  const [loading, setLoading] = React.useState<PlanId | null>(null);
+  const [loading, setLoading] = React.useState<TokenPackId | null>(null);
   const [payments, setPayments] = React.useState<PaymentRecord[]>([]);
 
   const loadPayments = React.useCallback(() => {
@@ -38,59 +36,53 @@ export default function BillingSettingsPage() {
     loadPayments();
   }, [loadPayments]);
 
-  const upgrade = async (planId: PlanId) => {
-    if (planId === "free") return;
-    const cycle = annual ? "annual" : "monthly";
-    setLoading(planId);
+  const purchase = async (packId: TokenPackId) => {
+    setLoading(packId);
     try {
-      // 1. Create the order on the server.
       const res = await fetch("/api/billing/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planId, cycle }),
+        body: JSON.stringify({ packId }),
       });
       const session = await res.json();
       if (!res.ok) throw new Error(session.error ?? "Checkout failed");
 
-      // 2. Load and open the Razorpay Checkout widget.
       const loaded = await loadRazorpayScript();
       if (!loaded || !window.Razorpay) {
         throw new Error("Couldn't load the Razorpay checkout.");
       }
 
+      const pack = getTokenPack(packId);
       const opened = openRazorpayCheckout({
         key: session.keyId,
         amount: session.amount,
         currency: session.currency ?? "INR",
         name: "WebFlowAI",
-        description: `${getPlan(planId)?.name ?? "Plan"} · ${cycle}`,
+        description: `${pack?.tokens.toLocaleString() ?? "AI"} token pack`,
         order_id: session.referenceId,
         prefill: { name: viewer.name, email: viewer.email },
         theme: { color: "#5c7edb" },
-        // 3. On success, verify the payment + activate the plan.
-        handler: async (resp) => {
+        handler: async (response) => {
           try {
             const verify = await fetch("/api/billing/verify", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                planId,
-                cycle,
-                razorpay_order_id: resp.razorpay_order_id,
-                razorpay_payment_id: resp.razorpay_payment_id,
-                razorpay_signature: resp.razorpay_signature,
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
               }),
             });
             const data = await verify.json();
             if (!verify.ok || !data.ok) {
               throw new Error(data.error ?? "Payment verification failed");
             }
-            toast.success(`You're now on the ${getPlan(planId)?.name} plan!`);
+            toast.success(`${data.tokens.toLocaleString()} tokens added`);
             loadPayments();
             router.refresh();
-          } catch (err) {
+          } catch (error) {
             toast.error(
-              err instanceof Error ? err.message : "Verification failed",
+              error instanceof Error ? error.message : "Verification failed",
             );
           } finally {
             setLoading(null);
@@ -102,130 +94,80 @@ export default function BillingSettingsPage() {
         setLoading(null);
         throw new Error("Couldn't open the Razorpay checkout.");
       }
-    } catch (err) {
+    } catch (error) {
       toast.error(
-        err instanceof Error ? err.message : "Could not start checkout",
+        error instanceof Error ? error.message : "Could not start checkout",
       );
       setLoading(null);
     }
   };
 
-  const creditPct = Math.round(
-    (viewer.creditsBalance / Math.max(1, viewer.creditsMonthly)) * 100,
-  );
-
   return (
     <div className="space-y-6">
-      {/* Current plan + usage */}
       <Card className="bg-card/40">
         <CardHeader className="flex-row items-center justify-between space-y-0">
-          <CardTitle>Current plan</CardTitle>
-          <Badge variant={isPaid ? "default" : "secondary"}>
-            {currentPlanDef?.name ?? "Free"}
-            {isPaid ? " · Monthly" : ""}
-          </Badge>
+          <CardTitle>Token balance</CardTitle>
+          <Badge variant="secondary">No subscription</Badge>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-end justify-between">
-            <div>
-              <div className="text-2xl font-bold">
-                {currentPlanDef && currentPlanDef.priceMonthly > 0
-                  ? formatINR(currentPlanDef.priceMonthly)
-                  : "₹0"}
-              </div>
-              <p className="text-sm text-muted-foreground">
-                {isPaid ? "per month" : "Free forever"}
-              </p>
-            </div>
-            {isPaid && (
-              <Button variant="outline" size="sm">
-                Manage subscription
-              </Button>
-            )}
+        <CardContent>
+          <div className="text-3xl font-bold">
+            {viewer.tokensBalance.toLocaleString()}
           </div>
-          <div>
-            <div className="mb-2 flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Credits used</span>
-              <span className="font-medium">
-                {viewer.creditsMonthly - viewer.creditsBalance} /{" "}
-                {viewer.creditsMonthly}
-              </span>
-            </div>
-            <Progress value={100 - creditPct} />
-          </div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            AI tokens available · tokens never expire
+          </p>
         </CardContent>
       </Card>
 
-      {/* Plan switcher */}
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">Plans</h3>
-        <div className="flex items-center gap-2 text-sm">
-          <span className={!annual ? "text-foreground" : "text-muted-foreground"}>
-            Monthly
-          </span>
-          <Switch
-            checked={annual}
-            onCheckedChange={setAnnual}
-            aria-label="Toggle annual billing"
-          />
-          <span className={annual ? "text-foreground" : "text-muted-foreground"}>
-            Annual
-          </span>
-        </div>
+      <div>
+        <h3 className="text-lg font-semibold">Buy tokens</h3>
+        <p className="mt-1 text-sm text-muted-foreground">
+          One-time payment. Add more whenever you need them.
+        </p>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        {plans.map((plan) => {
-          const isCurrent = plan.id === currentPlan;
-          const price = annual ? plan.priceAnnual : plan.priceMonthly;
-          return (
-            <div
-              key={plan.id}
-              className={cn(
-                "flex flex-col rounded-2xl border p-5",
-                plan.highlight
-                  ? "border-primary/40 bg-card"
-                  : "border-border bg-card/40",
-              )}
-            >
-              <div className="flex items-center justify-between">
-                <h4 className="font-semibold">{plan.name}</h4>
-                {isCurrent && <Badge variant="success">Current</Badge>}
-              </div>
-              <div className="mt-3 text-2xl font-bold">
-                {price === 0 ? "₹0" : formatINR(price)}
-                {price > 0 && (
-                  <span className="text-sm font-normal text-muted-foreground">
-                    {annual ? "/yr" : "/mo"}
-                  </span>
-                )}
-              </div>
-              <ul className="mt-4 flex-1 space-y-2">
-                {plan.features.slice(0, 4).map((f) => (
-                  <li key={f} className="flex items-start gap-2 text-xs">
-                    <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
-                    <span className="text-muted-foreground">{f}</span>
-                  </li>
-                ))}
-              </ul>
-              <Button
-                variant={isCurrent ? "outline" : plan.highlight ? "brand" : "outline"}
-                className="mt-5 w-full"
-                disabled={isCurrent || loading === plan.id}
-                onClick={() => upgrade(plan.id)}
-              >
-                {isCurrent
-                  ? "Current plan"
-                  : loading === plan.id
-                    ? "Starting…"
-                    : `Switch to ${plan.name}`}
-              </Button>
+        {tokenPacks.map((pack) => (
+          <div
+            key={pack.id}
+            className={cn(
+              "relative flex flex-col rounded-2xl border p-5",
+              pack.highlight
+                ? "border-primary/40 bg-card"
+                : "border-border bg-card/40",
+            )}
+          >
+            {pack.highlight && (
+              <Badge className="absolute -top-2.5 right-4">Most popular</Badge>
+            )}
+            <h4 className="font-semibold">{pack.name}</h4>
+            <p className="mt-1 text-xs text-muted-foreground">{pack.tagline}</p>
+            <div className="mt-4 text-2xl font-bold">
+              {formatINR(pack.price)}
             </div>
-          );
-        })}
+            <div className="mt-1 text-sm font-medium">
+              {pack.tokens.toLocaleString()} tokens
+            </div>
+            <ul className="mt-4 flex-1 space-y-2">
+              {pack.features.slice(1).map((feature) => (
+                <li key={feature} className="flex items-start gap-2 text-xs">
+                  <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                  <span className="text-muted-foreground">{feature}</span>
+                </li>
+              ))}
+            </ul>
+            <Button
+              variant={pack.highlight ? "brand" : "outline"}
+              className="mt-5 w-full"
+              disabled={loading !== null}
+              onClick={() => purchase(pack.id)}
+            >
+              {loading === pack.id ? "Starting…" : "Buy tokens"}
+            </Button>
+          </div>
+        ))}
       </div>
 
-      {/* Payment history */}
       <Card className="bg-card/40">
         <CardHeader>
           <CardTitle>Payment history</CardTitle>
@@ -237,25 +179,29 @@ export default function BillingSettingsPage() {
             </p>
           ) : (
             <div className="divide-y divide-border">
-              {payments.map((p) => {
-                const meta = paymentStatusMeta(p.status);
+              {payments.map((payment) => {
+                const meta = paymentStatusMeta(payment.status);
                 return (
                   <div
-                    key={p.id}
+                    key={payment.id}
                     className="flex items-center justify-between px-6 py-3.5 text-sm"
                   >
                     <div className="flex items-center gap-4">
                       <span className="text-muted-foreground">
-                        {new Date(p.date).toLocaleDateString("en-US", {
+                        {new Date(payment.date).toLocaleDateString("en-US", {
                           month: "short",
                           day: "numeric",
                           year: "numeric",
                         })}
                       </span>
-                      <Badge variant="secondary">{p.method ?? "Razorpay"}</Badge>
+                      <Badge variant="secondary">
+                        {payment.method ?? "Razorpay"}
+                      </Badge>
                     </div>
                     <div className="flex items-center gap-4">
-                      <span className="font-medium">{formatINR(p.amount)}</span>
+                      <span className="font-medium">
+                        {formatINR(payment.amount)}
+                      </span>
                       <Badge variant={meta.variant}>{meta.label}</Badge>
                     </div>
                   </div>

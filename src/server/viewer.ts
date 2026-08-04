@@ -1,5 +1,4 @@
 import "server-only";
-import { prisma } from "@/lib/prisma";
 import { getCurrentDbUser } from "@/server/user";
 import { redirect } from "next/navigation";
 
@@ -9,9 +8,7 @@ export interface Viewer {
   avatarUrl: string | null;
   bio: string;
   initials: string;
-  plan: "FREE" | "PRO" | "TEAM";
-  creditsBalance: number;
-  creditsMonthly: number;
+  tokensBalance: number;
 }
 
 function initialsFrom(value: string): string {
@@ -32,11 +29,6 @@ export async function getViewer(): Promise<Viewer> {
     redirect("/sign-in");
   }
 
-  const subscription = await prisma.subscription.findUnique({
-    where: { userId: user.id },
-    select: { plan: true },
-  });
-
   const name = user.name?.trim() || user.email.split("@")[0] || "Member";
   return {
     name,
@@ -44,8 +36,6 @@ export async function getViewer(): Promise<Viewer> {
     avatarUrl: user.avatarUrl,
     bio: user.bio ?? "",
     initials: initialsFrom(name),
-    plan: (subscription?.plan ?? "FREE") as Viewer["plan"],
-    creditsBalance: user.creditsBalance,
-    creditsMonthly: user.creditsMonthly,
+    tokensBalance: user.tokensBalance,
   };
 }

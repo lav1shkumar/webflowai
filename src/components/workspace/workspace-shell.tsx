@@ -47,6 +47,7 @@ export function WorkspaceShell({ projectId }: { projectId: string }) {
   const bootPreview = useWorkspace((s) => s.bootPreview);
   const serverStatus = useWorkspace((s) => s.serverStatus);
   const files = useWorkspace((s) => s.files);
+  const isGenerating = useWorkspace((s) => s.isGenerating);
 
   const fileCount = Object.keys(files).length;
 
@@ -99,8 +100,9 @@ export function WorkspaceShell({ projectId }: { projectId: string }) {
               </button>
               <button
                 onClick={() => setView("preview")}
+                disabled={isGenerating}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition-colors",
+                  "inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
                   view === "preview"
                     ? "bg-foreground/10 text-foreground"
                     : "text-muted-foreground hover:text-foreground",
@@ -117,7 +119,10 @@ export function WorkspaceShell({ projectId }: { projectId: string }) {
                 setView("preview");
                 void bootPreview();
               }}
-              disabled={serverStatus !== "idle" && serverStatus !== "error"}
+              disabled={
+                isGenerating ||
+                (serverStatus !== "idle" && serverStatus !== "error")
+              }
             >
               <Play className="h-3.5 w-3.5" /> Run
             </Button>

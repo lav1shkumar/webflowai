@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { getPlan, type PlanId } from "./plans";
+import { getTokenPack, type TokenPackId } from "./token-packs";
 
 /**
  * Razorpay billing helpers. When credentials are absent we
@@ -20,21 +20,18 @@ export function isRazorpayConfigured(): boolean {
 }
 
 export async function createRazorpayCheckout(input: {
-  planId: PlanId;
-  cycle: "monthly" | "annual";
+  packId: TokenPackId;
   customerEmail: string;
 }): Promise<CheckoutSession> {
-  const plan = getPlan(input.planId);
-  if (!plan) throw new Error(`Unknown plan: ${input.planId}`);
+  const pack = getTokenPack(input.packId);
 
-  const amount =
-    input.cycle === "annual" ? plan.priceAnnual : plan.priceMonthly;
+  const amount = pack.price;
   const keyId = process.env.RAZORPAY_KEY_ID;
   const keySecret = process.env.RAZORPAY_KEY_SECRET;
 
   if (!keyId || !keySecret) {
     return {
-      referenceId: `order_demo_${input.planId}_${input.cycle}`,
+      referenceId: `order_demo_${input.packId}_${crypto.randomUUID()}`,
       amount,
       currency: "INR",
       keyId: "rzp_test_demo",
@@ -52,8 +49,7 @@ export async function createRazorpayCheckout(input: {
       amount,
       currency: "INR",
       notes: {
-        planId: input.planId,
-        cycle: input.cycle,
+        packId: input.packId,
         email: input.customerEmail,
       },
     }),

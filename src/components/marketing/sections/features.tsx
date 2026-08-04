@@ -22,13 +22,13 @@ const features = [
     icon: TerminalSquare,
     title: "Real dev environment",
     description:
-      "Full Node.js runtime in the browser via WebContainers — install, run, and debug for real.",
+      "Full Node.js runtime in an isolated cloud sandbox — install, run, and debug for real.",
   },
   {
     icon: Globe,
     title: "Instant live preview",
     description:
-      "Your app boots in-browser and refreshes as it evolves. No deploys required.",
+      "Your app boots in the cloud and refreshes as it evolves. No deploys required.",
   },
   {
     icon: Workflow,
