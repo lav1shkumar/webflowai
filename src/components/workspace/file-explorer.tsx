@@ -20,21 +20,18 @@ import { cn } from "@/lib/utils";
 const FOLDER_KEEP = ".gitkeep";
 
 type CreateKind = "file" | "folder";
-interface CreateState {
-  /** Parent directory path the new entry goes into ("" = project root). */
-  parent: string;
-  kind: CreateKind;
-}
+type EditState =
+  | { mode: "create"; parent: string; kind: CreateKind }
+  | { mode: "rename"; path: string }
+  | null;
 
 interface ExplorerCtx {
-  creating: CreateState | null;
-  start: (parent: string, kind: CreateKind) => void;
-  cancel: () => void;
-  submit: (name: string) => void;
-  renaming: string | null;
+  edit: EditState;
+  startCreate: (parent: string, kind: CreateKind) => void;
+  submitCreate: (name: string) => void;
   startRename: (path: string) => void;
-  cancelRename: () => void;
-  submitRename: (path: string, kind: "file" | "directory", name: string) => void;
+  submitRename: (path: string, kind: CreateKind, name: string) => void;
+  cancel: () => void;
 }
 
 const ExplorerContext = React.createContext<ExplorerCtx | null>(null);
@@ -51,8 +48,7 @@ export function FileExplorer() {
   const renameFile = useWorkspace((s) => s.renameFile);
   const renameFolder = useWorkspace((s) => s.renameFolder);
   const [query, setQuery] = React.useState("");
-  const [creating, setCreating] = React.useState<CreateState | null>(null);
-  const [renaming, setRenaming] = React.useState<string | null>(null);
+  const [edit, setEdit] = React.useState<EditState>(null);
 
   const filtered = React.useMemo(
     () => (query ? filterTree(tree, query.toLowerCase()) : tree),
@@ -61,45 +57,41 @@ export function FileExplorer() {
 
   const ctx = React.useMemo<ExplorerCtx>(
     () => ({
-      creating,
-      start: (parent, kind) => {
-        setRenaming(null);
-        setCreating({ parent, kind });
-      },
-      cancel: () => setCreating(null),
-      submit: (name) => {
+      edit,
+      startCreate: (parent, kind) =>
+        setEdit({ mode: "create", parent, kind }),
+      submitCreate: (name) => {
+        if (edit?.mode !== "create") return;
         const trimmed = name.trim().replace(/^\/+|\/+$/g, "");
         if (!trimmed) {
-          setCreating(null);
+          setEdit(null);
           return;
         }
-        const base = creating?.parent ? `${creating.parent}/` : "";
+        const base = edit.parent ? `${edit.parent}/` : "";
         const fullPath = `${base}${trimmed}`;
-        if (creating?.kind === "folder") createFolder(fullPath);
+        if (edit.kind === "folder") createFolder(fullPath);
         else createFile(fullPath);
-        setCreating(null);
+        setEdit(null);
       },
-      renaming,
-      startRename: (path) => {
-        setCreating(null);
-        setRenaming(path);
-      },
-      cancelRename: () => setRenaming(null),
+      startRename: (path) => setEdit({ mode: "rename", path }),
       submitRename: (path, kind, name) => {
         const trimmed = name.trim().replace(/^\/+|\/+$/g, "");
         const parent = parentOf(path);
         const nextPath = parent ? `${parent}/${trimmed}` : trimmed;
         if (!trimmed || nextPath === path) {
-          setRenaming(null);
+          setEdit(null);
           return;
         }
-        if (kind === "directory") renameFolder(path, nextPath);
+        if (kind === "folder") renameFolder(path, nextPath);
         else renameFile(path, nextPath);
-        setRenaming(null);
+        setEdit(null);
       },
+      cancel: () => setEdit(null),
     }),
-    [creating, renaming, createFile, createFolder, renameFile, renameFolder],
+    [edit, createFile, createFolder, renameFile, renameFolder],
   );
+
+  const creating = edit?.mode === "create" ? edit : null;
 
   return (
     <ExplorerContext.Provider value={ctx}>
@@ -110,7 +102,7 @@ export function FileExplorer() {
           </span>
           <div className="flex items-center gap-0.5">
             <button
-              onClick={() => ctx.start("", "file")}
+              onClick={() => ctx.startCreate("", "file")}
               className="rounded-md p-1 text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
               aria-label="New file"
               title="New file"
@@ -118,7 +110,7 @@ export function FileExplorer() {
               <FilePlus className="h-4 w-4" />
             </button>
             <button
-              onClick={() => ctx.start("", "folder")}
+              onClick={() => ctx.startCreate("", "folder")}
               className="rounded-md p-1 text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
               aria-label="New folder"
               title="New folder"
@@ -143,7 +135,7 @@ export function FileExplorer() {
         <div className="no-scrollbar flex-1 overflow-y-auto px-1.5 pb-3">
           {/* Root-level inline creation row. */}
           {creating && creating.parent === "" && (
-            <CreateInput depth={0} kind={creating.kind} />
+            <NameInput depth={0} kind={creating.kind} />
           )}
 
           {filtered.length === 0 && !creating ? (
@@ -164,20 +156,20 @@ export function FileExplorer() {
 }
 
 function TreeNode({ node, depth }: { node: FileNode; depth: number }) {
-  const { creating, start, renaming, startRename } = useExplorer();
+  const { edit, startCreate, startRename } = useExplorer();
   const [open, setOpen] = React.useState(depth < 2);
   const activeFilePath = useWorkspace((s) => s.activeFilePath);
   const setActiveFile = useWorkspace((s) => s.setActiveFile);
   const deleteFile = useWorkspace((s) => s.deleteFile);
   const deleteFolder = useWorkspace((s) => s.deleteFolder);
 
-  // Auto-expand a directory when something is being created inside it.
+  const creating = edit?.mode === "create" ? edit : null;
   const creatingHere = creating?.parent === node.path;
   React.useEffect(() => {
     if (creatingHere) setOpen(true);
   }, [creatingHere]);
 
-  const isRenaming = renaming === node.path;
+  const isRenaming = edit?.mode === "rename" && edit.path === node.path;
   const pad = { paddingLeft: `${depth * 12 + 8}px` };
 
   if (node.type === "directory") {
@@ -185,9 +177,9 @@ function TreeNode({ node, depth }: { node: FileNode; depth: number }) {
     return (
       <div>
         {isRenaming ? (
-          <RenameInput
+          <NameInput
             depth={depth}
-            kind="directory"
+            kind="folder"
             path={node.path}
             current={node.name}
             withChevron
@@ -216,7 +208,7 @@ function TreeNode({ node, depth }: { node: FileNode; depth: number }) {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  start(node.path, "file");
+                  startCreate(node.path, "file");
                 }}
                 className="rounded p-0.5 hover:text-foreground"
                 aria-label={`New file in ${node.name}`}
@@ -227,7 +219,7 @@ function TreeNode({ node, depth }: { node: FileNode; depth: number }) {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  start(node.path, "folder");
+                  startCreate(node.path, "folder");
                 }}
                 className="rounded p-0.5 hover:text-foreground"
                 aria-label={`New folder in ${node.name}`}
@@ -263,7 +255,7 @@ function TreeNode({ node, depth }: { node: FileNode; depth: number }) {
         {open && (
           <>
             {creatingHere && (
-              <CreateInput depth={depth + 1} kind={creating.kind} />
+              <NameInput depth={depth + 1} kind={creating.kind} />
             )}
             {children.map((child) => (
               <TreeNode key={child.path} node={child} depth={depth + 1} />
@@ -277,7 +269,7 @@ function TreeNode({ node, depth }: { node: FileNode; depth: number }) {
   const active = activeFilePath === node.path;
   if (isRenaming) {
     return (
-      <RenameInput
+      <NameInput
         depth={depth}
         kind="file"
         path={node.path}
@@ -324,20 +316,42 @@ function TreeNode({ node, depth }: { node: FileNode; depth: number }) {
   );
 }
 
-/** Inline, auto-focused input for creating a file or folder. */
-function CreateInput({ depth, kind }: { depth: number; kind: CreateKind }) {
-  const { submit, cancel } = useExplorer();
-  const [value, setValue] = React.useState("");
+/** Shared inline input for both creating and renaming entries. */
+function NameInput({
+  depth,
+  kind,
+  path,
+  current,
+  withChevron,
+}: {
+  depth: number;
+  kind: CreateKind;
+  path?: string;
+  current?: string;
+  withChevron?: boolean;
+}) {
+  const { submitCreate, submitRename, cancel } = useExplorer();
+  const [value, setValue] = React.useState(current ?? "");
   const ref = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
-    ref.current?.focus();
-  }, []);
+    const el = ref.current;
+    if (!el) return;
+    el.focus();
+    if (!current) return;
+    const dot = current.lastIndexOf(".");
+    el.setSelectionRange(0, dot > 0 ? dot : current.length);
+  }, [current]);
 
+  const save = () => {
+    if (path) submitRename(path, kind, value);
+    else submitCreate(value);
+  };
   const pad = { paddingLeft: `${depth * 12 + 8}px` };
 
   return (
     <div className="flex items-center gap-1.5 py-1" style={pad}>
+      {withChevron && <span className="w-3.5 shrink-0" />}
       {kind === "folder" ? (
         <Folder className="h-4 w-4 shrink-0 text-primary/70" />
       ) : (
@@ -348,63 +362,11 @@ function CreateInput({ depth, kind }: { depth: number; kind: CreateKind }) {
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Enter") submit(value);
+          if (e.key === "Enter") save();
           else if (e.key === "Escape") cancel();
         }}
-        onBlur={() => (value.trim() ? submit(value) : cancel())}
+        onBlur={() => (value.trim() ? save() : cancel())}
         placeholder={kind === "folder" ? "folder name" : "file name"}
-        className="h-6 w-full rounded border border-input bg-background/70 px-1.5 text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
-      />
-    </div>
-  );
-}
-
-/** Inline, auto-focused input for renaming a file or folder. */
-function RenameInput({
-  depth,
-  kind,
-  path,
-  current,
-  withChevron,
-}: {
-  depth: number;
-  kind: "file" | "directory";
-  path: string;
-  current: string;
-  withChevron?: boolean;
-}) {
-  const { submitRename, cancelRename } = useExplorer();
-  const [value, setValue] = React.useState(current);
-  const ref = React.useRef<HTMLInputElement>(null);
-
-  React.useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    el.focus();
-    // Preselect the basename (without extension) for quick edits.
-    const dot = current.lastIndexOf(".");
-    el.setSelectionRange(0, dot > 0 ? dot : current.length);
-  }, [current]);
-
-  const pad = { paddingLeft: `${depth * 12 + 8}px` };
-
-  return (
-    <div className="flex items-center gap-1.5 py-1" style={pad}>
-      {withChevron && <span className="w-3.5 shrink-0" />}
-      {kind === "directory" ? (
-        <Folder className="h-4 w-4 shrink-0 text-primary/70" />
-      ) : (
-        <FileIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
-      )}
-      <input
-        ref={ref}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") submitRename(path, kind, value);
-          else if (e.key === "Escape") cancelRename();
-        }}
-        onBlur={() => submitRename(path, kind, value)}
         className="h-6 w-full rounded border border-input bg-background/70 px-1.5 text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
       />
     </div>

@@ -5,7 +5,6 @@ export interface Template {
   category: "Starter" | "AI" | "Business" | "Commerce" | "Internal";
   /** Tailwind gradient used for the card art (marketing showcase). */
   gradient: string;
-  icon: string; // lucide icon name (fallback / marketing)
   /** Emoji shown on the app template cards. */
   emoji: string;
   tags: string[];
@@ -22,7 +21,6 @@ export const templates: Template[] = [
       "A streaming homepage with hero banner, content rows, and a video detail page.",
     category: "Starter",
     gradient: "from-rose-500 to-red-700",
-    icon: "LayoutTemplate",
     emoji: "🎬",
     tags: ["Streaming", "Hero", "Rows"],
     prompt:
@@ -36,7 +34,6 @@ export const templates: Template[] = [
       "Charts, KPIs, and data tables with filtering and a clean sidebar layout.",
     category: "Business",
     gradient: "from-blue-600 to-slate-700",
-    icon: "BarChart3",
     emoji: "📦",
     tags: ["Charts", "KPIs", "Tables"],
     prompt:
@@ -50,7 +47,6 @@ export const templates: Template[] = [
       "Drag-and-drop columns, cards, labels, and activity — a Trello-style board.",
     category: "Business",
     gradient: "from-emerald-600 to-teal-700",
-    icon: "Users",
     emoji: "📋",
     tags: ["Drag & drop", "Cards", "Columns"],
     prompt:
@@ -63,7 +59,6 @@ export const templates: Template[] = [
       "Folders, file grid, upload, and preview with breadcrumb navigation.",
     category: "Internal",
     gradient: "from-amber-500 to-yellow-600",
-    icon: "Wrench",
     emoji: "📁",
     tags: ["Folders", "Upload", "Preview"],
     prompt:
@@ -76,7 +71,6 @@ export const templates: Template[] = [
       "A video grid homepage, watch page with player, and a channel layout.",
     category: "Starter",
     gradient: "from-red-500 to-rose-700",
-    icon: "LayoutTemplate",
     emoji: "📺",
     tags: ["Video", "Grid", "Player"],
     prompt:
@@ -89,7 +83,6 @@ export const templates: Template[] = [
       "Product catalog, cart, and checkout with product detail pages.",
     category: "Commerce",
     gradient: "from-yellow-500 to-amber-600",
-    icon: "ShoppingBag",
     emoji: "🛍️",
     tags: ["Storefront", "Cart", "Checkout"],
     prompt:
@@ -102,7 +95,6 @@ export const templates: Template[] = [
       "Listing grid, map view, detail pages, and a booking flow with dates.",
     category: "Commerce",
     gradient: "from-pink-500 to-rose-600",
-    icon: "LayoutTemplate",
     emoji: "🏠",
     tags: ["Listings", "Map", "Booking"],
     prompt:
@@ -115,14 +107,9 @@ export const templates: Template[] = [
       "Sidebar playlists, a main track view, and a sticky player bar.",
     category: "AI",
     gradient: "from-emerald-500 to-green-700",
-    icon: "Sparkles",
     emoji: "🎵",
     tags: ["Playlists", "Player", "Sidebar"],
     prompt:
       "Build a Spotify-style music player with a sidebar for playlists, a main view for songs and details, and a sticky bottom player bar.",
   },
 ];
-
-export function getTemplate(id: string): Template | undefined {
-  return templates.find((t) => t.id === id);
-}

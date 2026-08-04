@@ -5,7 +5,6 @@ export interface FileNode {
   name: string;
   path: string;
   type: "file" | "directory";
-  language?: string;
   children?: FileNode[];
 }
 
@@ -46,31 +45,23 @@ export function buildFileTree(files: Record<string, string>): FileNode[] {
     let cursor = root;
     let accumulated = "";
 
-    let idx = 0;
-    for (const segment of segments) {
+    for (const [index, segment] of segments.entries()) {
       accumulated = accumulated ? `${accumulated}/${segment}` : segment;
-      const isLeaf = idx === segments.length - 1;
+      const isLeaf = index === segments.length - 1;
       cursor.children ??= [];
 
-      let next: FileNode | undefined;
-      for (const child of cursor.children) {
-        if (child.name === segment) {
-          next = child;
-          break;
-        }
-      }
+      let next = cursor.children.find((child) => child.name === segment);
 
       if (!next) {
         next = {
           name: segment,
           path: accumulated,
           type: isLeaf ? "file" : "directory",
-          ...(isLeaf ? { language: languageFromPath(segment) } : { children: [] }),
+          ...(!isLeaf ? { children: [] } : {}),
         };
         cursor.children.push(next);
       }
       cursor = next;
-      idx++;
     }
   }
 
@@ -101,9 +92,8 @@ export function toFileSystemTree(
     const segments = path.split("/").filter(Boolean);
     let cursor: FileSystemTree = tree;
 
-    let idx = 0;
-    for (const segment of segments) {
-      const isLeaf = idx === segments.length - 1;
+    for (const [index, segment] of segments.entries()) {
+      const isLeaf = index === segments.length - 1;
       if (isLeaf) {
         cursor[segment] = { file: { contents } };
       } else {
@@ -116,7 +106,6 @@ export function toFileSystemTree(
           cursor = dir;
         }
       }
-      idx++;
     }
   }
 

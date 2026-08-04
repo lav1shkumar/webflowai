@@ -11,8 +11,6 @@ export interface PlanDefinition {
   highlight?: boolean;
   cta: string;
   features: string[];
-  /** Razorpay plan ids per cycle, injected from env in production. */
-  razorpayPlanIds?: { monthly?: string; annual?: string };
 }
 
 export const plans: PlanDefinition[] = [

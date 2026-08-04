@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { killSandbox } from "@/server/e2b";
 import { getCurrentDbUser } from "@/server/user";
 
 export interface ProjectSummary {
@@ -126,7 +127,7 @@ export async function createProject(input: {
       templateId: input.templateId ?? null,
       ownerId: user.id,
       status: "DRAFT",
-      // The agent pipeline scaffolds Vite + React SPAs (WebContainer-friendly).
+      // The generation pipeline scaffolds Vite + React SPAs.
       framework: "vite",
     },
   });
@@ -174,9 +175,17 @@ export async function deleteProject(
 
   const project = await prisma.project.findFirst({
     where: { id, ownerId: user.id },
-    select: { id: true },
+    select: { id: true, sandboxId: true },
   });
   if (!project) return { ok: false, error: "not-found" };
+
+  if (project.sandboxId) {
+    try {
+      await killSandbox(project.sandboxId);
+    } catch {
+      return { ok: false, error: "sandbox-cleanup-failed" };
+    }
+  }
 
   await prisma.project.delete({ where: { id: project.id } });
 

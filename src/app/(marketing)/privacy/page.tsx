@@ -51,7 +51,7 @@ export default function PrivacyPage() {
           </h2>
           <p className="mt-2">
             We use third-party services for authentication (Clerk), payments
-            (Razorpay), and AI processing (Google Vertex AI). These services
+            (Razorpay), and AI processing (Azure OpenAI). These services
             have their own privacy policies governing their use of your data.
           </p>
         </section>

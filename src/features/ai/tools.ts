@@ -1,8 +1,7 @@
-import { tool, type Tool } from "ai";
+import { tool } from "ai";
 import { z } from "zod";
 import { buildRepoMap, relevantPaths } from "./context";
 import { languageFromPath } from "../webcontainer/files";
-import type { AgentKind, ToolContext, ToolName } from "./types";
 
 /**
  * Workspace file tools — the agent's hands on the codebase.
@@ -10,8 +9,7 @@ import type { AgentKind, ToolContext, ToolName } from "./types";
  * These let a model *request to see files on demand* instead of relying solely
  * on what we pre-pack into the prompt. That keeps prompts small on large
  * projects while still giving the agent full read access through a bounded,
- * auditable surface. Every call emits a {@link AgentEvent} of type `tool` so
- * the workspace UI can show "Reading src/App.tsx…" live.
+ * auditable surface.
  *
  * Read-only by design: tools never mutate the workspace. All file writes still
  * flow through the generator → file-operation chokepoint, which keeps changes
@@ -22,13 +20,7 @@ const MAX_READ_CHARS = 24_000;
 const MAX_SEARCH_RESULTS = 40;
 
 /** Build the tool set bound to a specific pipeline context. */
-export function createWorkspaceTools(
-  ctx: ToolContext,
-  agent: AgentKind,
-): Record<ToolName, Tool> {
-  const emitTool = (toolName: ToolName, detail: string) =>
-    ctx.emit({ type: "tool", agent, tool: toolName, detail });
-
+export function createWorkspaceTools(files: Record<string, string>) {
   const list_files = tool({
     description:
       "List every file in the current project workspace as a repository map " +
@@ -36,11 +28,10 @@ export function createWorkspaceTools(
       "deciding what to read or change.",
     inputSchema: z.object({}),
     execute: async () => {
-      emitTool("list_files", "Listing workspace files");
-      const paths = relevantPaths(ctx.files);
+      const paths = relevantPaths(files);
       return {
         fileCount: paths.length,
-        repoMap: buildRepoMap(ctx.files),
+        repoMap: buildRepoMap(files),
       };
     },
   });
@@ -56,10 +47,9 @@ export function createWorkspaceTools(
         .describe("Exact workspace-relative file path, e.g. 'src/App.tsx'."),
     }),
     execute: async ({ path }) => {
-      emitTool("read_file", `Reading ${path}`);
-      const content = ctx.files[path];
+      const content = files[path];
       if (content === undefined) {
-        const suggestions = relevantPaths(ctx.files)
+        const suggestions = relevantPaths(files)
           .filter((p) => p.endsWith(path.split("/").pop() ?? path))
           .slice(0, 5);
         return {
@@ -94,7 +84,6 @@ export function createWorkspaceTools(
         .describe("Treat the query as a regular expression (default false)."),
     }),
     execute: async ({ query, isRegex }) => {
-      emitTool("search_files", `Searching for "${query}"`);
       let matcher: RegExp;
       try {
         matcher = isRegex
@@ -110,8 +99,8 @@ export function createWorkspaceTools(
         text: string;
       }[] = [];
 
-      for (const path of relevantPaths(ctx.files)) {
-        const lines = (ctx.files[path] ?? "").split("\n");
+      for (const path of relevantPaths(files)) {
+        const lines = (files[path] ?? "").split("\n");
         for (let i = 0; i < lines.length; i++) {
           matcher.lastIndex = 0;
           if (matcher.test(lines[i] ?? "")) {

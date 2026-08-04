@@ -6,7 +6,7 @@ import { buildFileTree, type FileNode } from "@/features/webcontainer/files";
 import { terminalBus } from "@/features/workspace/terminal-bus";
 import { getProjectState, saveProjectState } from "@/server/projects";
 import { getCredits } from "@/server/credits";
-import type { AgentEvent, AgentKind } from "@/features/ai/types";
+import type { GenerationEvent } from "@/features/ai/types";
 import { shortId } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
@@ -19,17 +19,11 @@ export interface CreditsState {
   monthly: number;
 }
 
-export interface ChatStep {
-  agent: AgentKind;
-  label: string;
-  status: "running" | "done" | "error";
-}
-
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
-  steps?: ChatStep[];
+  status?: "running" | "done" | "error";
   files?: string[];
   credits?: number;
   durationMs?: number;
@@ -70,14 +64,6 @@ interface WorkspaceState {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const AGENT_LABELS: Record<AgentKind, string> = {
-  generator: "Generating code",
-};
-
-function rebuildTree(files: Record<string, string>): FileNode[] {
-  return buildFileTree(files);
-}
-
 const containerSyncTimers = new Map<string, ReturnType<typeof setTimeout>>();
 function scheduleContainerSync(path: string, content: string): void {
   if (!webContainerService.isMounted) return;
@@ -116,15 +102,8 @@ function dependenciesChanged(before: string, after: string): boolean {
 // Server generation stream
 // ---------------------------------------------------------------------------
 
-const AGENT_EVENT_TYPES = new Set([
-  "phase", "log", "token", "file", "plan", "blueprint",
-  "review", "verification", "tool", "error",
-]);
-
 interface ServerRunOutput {
-  summary: string | null;
-  fileCount: number;
-  ok: boolean;
+  summary: string;
   creditsUsed: number | null;
   creditsRemaining: number | null;
   signedIn: boolean;
@@ -132,12 +111,10 @@ interface ServerRunOutput {
 
 async function runViaServer(
   input: {
-    projectId: string;
     prompt: string;
     files: Record<string, string>;
-    history: { role: "user" | "assistant"; content: string }[];
   },
-  onEvent: (event: AgentEvent) => void,
+  onEvent: (event: GenerationEvent) => void,
 ): Promise<ServerRunOutput> {
   const res = await fetch("/api/chat", {
     method: "POST",
@@ -158,9 +135,7 @@ async function runViaServer(
   const decoder = new TextDecoder();
   let buffer = "";
   const result: ServerRunOutput = {
-    summary: null,
-    fileCount: 0,
-    ok: false,
+    summary: "Generation completed.",
     creditsUsed: null,
     creditsRemaining: null,
     signedIn: false,
@@ -169,31 +144,24 @@ async function runViaServer(
   const handleLine = (line: string) => {
     const trimmed = line.trim();
     if (!trimmed) return;
-    let evt: Record<string, unknown>;
+    let event: GenerationEvent;
     try {
-      evt = JSON.parse(trimmed) as Record<string, unknown>;
+      event = JSON.parse(trimmed) as GenerationEvent;
     } catch {
       return;
     }
 
-    if (evt.type === "fatal") {
-      throw new Error(String(evt.message ?? "Generation failed"));
+    if (event.type === "error") {
+      throw new Error(event.message);
     }
-    if (evt.type === "done") {
-      result.ok = Boolean(evt.ok);
-      result.fileCount = Number(evt.fileCount ?? 0);
-      result.signedIn = Boolean(evt.signedIn);
-      result.creditsUsed = evt.creditsUsed != null ? Number(evt.creditsUsed) : null;
-      result.creditsRemaining = evt.creditsRemaining != null ? Number(evt.creditsRemaining) : null;
+    if (event.type === "done") {
+      result.summary = event.summary;
+      result.signedIn = event.signedIn;
+      result.creditsUsed = event.creditsUsed;
+      result.creditsRemaining = event.creditsRemaining;
       return;
     }
-    if (evt.type === "review") {
-      const review = evt.review as { summary?: string } | undefined;
-      if (review?.summary) result.summary = review.summary;
-    }
-    if (typeof evt.type === "string" && AGENT_EVENT_TYPES.has(evt.type)) {
-      onEvent(evt as unknown as AgentEvent);
-    }
+    onEvent(event);
   };
 
   for (;;) {
@@ -276,7 +244,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         if (state && get().projectId === projectId) {
           set({
             files: state.files,
-            tree: rebuildTree(state.files),
+            tree: buildFileTree(state.files),
             messages: state.messages.map((m) => ({
               id: m.id,
               role: m.role,
@@ -321,7 +289,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       id: assistantId,
       role: "assistant",
       content: "",
-      steps: [],
       files: [],
       createdAt: Date.now(),
     };
@@ -340,26 +307,17 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         ),
       }));
 
-    const upsertStep = (agent: AgentKind, status: ChatStep["status"]) => {
-      set((s) => ({
-        messages: s.messages.map((m) => {
-          if (m.id !== assistantId) return m;
-          const steps = [...(m.steps ?? [])];
-          const idx = steps.findIndex((st) => st.agent === agent);
-          const next: ChatStep = { agent, label: AGENT_LABELS[agent], status };
-          if (idx >= 0) steps[idx] = next;
-          else steps.push(next);
-          return { ...m, steps };
-        }),
-      }));
-    };
-
-    const onEvent = (event: AgentEvent) => {
+    const onEvent = (event: GenerationEvent) => {
       switch (event.type) {
-        case "phase":
-          if (event.phase === "running") upsertStep(event.agent, "running");
-          if (event.phase === "succeeded") upsertStep(event.agent, "done");
-          if (event.phase === "failed") upsertStep(event.agent, "error");
+        case "status":
+          updateAssistant({
+            status:
+              event.status === "succeeded"
+                ? "done"
+                : event.status === "failed"
+                  ? "error"
+                  : "running",
+          });
           break;
         case "file": {
           const { change } = event;
@@ -373,7 +331,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
             }
             return {
               files,
-              tree: rebuildTree(files),
+              tree: buildFileTree(files),
               activeFilePath: s.activeFilePath ?? change.path,
             };
           });
@@ -394,31 +352,17 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         case "log":
           terminalBus.writeLine(`\u001b[2m${event.message}\u001b[0m`);
           break;
-        case "review":
-          updateAssistant({ content: event.review.summary });
-          break;
       }
     };
-
-    const history = get().messages
-      .filter((m) => m.content)
-      .map((m) => ({ role: m.role, content: m.content }));
 
     const pkgBefore = get().files["package.json"] ?? "";
 
     try {
-      const { summary, fileCount, ok, creditsUsed, creditsRemaining, signedIn } =
-        await runViaServer(
-          { projectId, prompt, files: get().files, history },
-          onEvent,
-        );
+      const { summary, creditsUsed, creditsRemaining, signedIn } =
+        await runViaServer({ prompt, files: get().files }, onEvent);
 
       updateAssistant({
-        content:
-          summary ??
-          (ok
-            ? `Done — applied ${fileCount} file change(s).`
-            : "I couldn't complete that — check the terminal for details."),
+        content: summary,
         ...(creditsUsed != null ? { credits: creditsUsed } : {}),
       });
 
@@ -442,6 +386,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         }));
         updateAssistant({
           content: "You're out of credits. Top up your plan to continue generating.",
+          status: "error",
         });
         return;
       }
@@ -451,6 +396,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           serverErr instanceof Error
             ? `Generation failed: ${serverErr.message}`
             : "Generation failed — check the terminal for details.",
+        status: "error",
       });
     } finally {
       set({ isGenerating: false });
@@ -483,7 +429,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   writeFile: (path, content) => {
     set((s) => {
       const files = { ...s.files, [path]: content };
-      return { files, tree: rebuildTree(files) };
+      return { files, tree: buildFileTree(files) };
     });
     scheduleContainerSync(path, content);
   },
@@ -492,7 +438,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (get().files[path] !== undefined) return;
     set((s) => {
       const files = { ...s.files, [path]: "" };
-      return { files, tree: rebuildTree(files), activeFilePath: path };
+      return { files, tree: buildFileTree(files), activeFilePath: path };
     });
     void webContainerService.syncFile(path, "");
   },
@@ -504,7 +450,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (get().files[keep] !== undefined) return;
     set((s) => {
       const files = { ...s.files, [keep]: "" };
-      return { files, tree: rebuildTree(files) };
+      return { files, tree: buildFileTree(files) };
     });
     void webContainerService.syncFile(keep, "");
   },
@@ -514,7 +460,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const files = { ...s.files };
       delete files[path];
       const activeFilePath = s.activeFilePath === path ? null : s.activeFilePath;
-      return { files, tree: rebuildTree(files), activeFilePath };
+      return { files, tree: buildFileTree(files), activeFilePath };
     });
     void webContainerService.syncDelete(path);
   },
@@ -532,7 +478,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         s.activeFilePath && targets.includes(s.activeFilePath)
           ? null
           : s.activeFilePath;
-      return { files, tree: rebuildTree(files), activeFilePath };
+      return { files, tree: buildFileTree(files), activeFilePath };
     });
     for (const p of targets) void webContainerService.syncDelete(p);
   },
@@ -545,7 +491,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       files[to] = files[from] ?? "";
       delete files[from];
       const activeFilePath = s.activeFilePath === from ? to : s.activeFilePath;
-      return { files, tree: rebuildTree(files), activeFilePath };
+      return { files, tree: buildFileTree(files), activeFilePath };
     });
     void webContainerService.syncDelete(from);
     void webContainerService.syncFile(to, content);
@@ -574,7 +520,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         delete files[m.from];
         if (activeFilePath === m.from) activeFilePath = m.to;
       }
-      return { files, tree: rebuildTree(files), activeFilePath };
+      return { files, tree: buildFileTree(files), activeFilePath };
     });
 
     for (const m of moves) {
@@ -591,8 +537,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       return;
     }
     try {
-      await webContainerService.mount(get().files);
-      await webContainerService.startDevServer();
+      await webContainerService.start(get().files);
     } catch (err) {
       terminalBus.writeLine(
         `\u001b[31m${err instanceof Error ? err.message : "Preview failed to boot"}\u001b[0m`,

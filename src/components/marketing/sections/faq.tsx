@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 const faqs = [
   {
     q: "What exactly does WebFlowAI build?",
-    a: "Full-stack applications — Next.js + React + TypeScript by default. The multi-agent pipeline plans the architecture, generates the code, applies file changes, and reviews the result, then runs it live in your browser.",
+    a: "Web applications using Vite, React, and TypeScript by default. The generation pipeline plans the files, writes the code, and then runs it live in your browser.",
   },
   {
     q: "How does the in-browser environment work?",
@@ -17,7 +17,7 @@ const faqs = [
   },
   {
     q: "Can I keep editing after generation?",
-    a: "Yes. The workspace is conversational: ask for new features, refactors, fixes, or explanations and the agents iterate with full project context. You can also edit files directly.",
+    a: "Yes. The workspace is conversational: ask for new features, refactors, fixes, or explanations and the AI iterates with full project context. You can also edit files directly.",
   },
   {
     q: "Do I own the code?",

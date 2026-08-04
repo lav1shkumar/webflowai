@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentDbUser } from "@/server/user";
-import { razorpayProvider } from "@/features/billing/razorpay";
+import {
+  isRazorpayConfigured,
+  verifyRazorpayPayment,
+} from "@/features/billing/razorpay";
 import { getPlan } from "@/features/billing/plans";
 import { activatePaidSubscription } from "@/features/billing/activate";
 
@@ -40,8 +43,8 @@ export async function POST(request: Request) {
   } = parsed.data;
 
   // Verify the payment signature when Razorpay is configured.
-  if (razorpayProvider.isConfigured) {
-    const valid = razorpayProvider.verifyPaymentSignature({
+  if (isRazorpayConfigured()) {
+    const valid = verifyRazorpayPayment({
       orderId: razorpay_order_id,
       paymentId: razorpay_payment_id,
       signature: razorpay_signature,

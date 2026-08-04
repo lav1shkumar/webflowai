@@ -1,4 +1,3 @@
-import { languageFromPath } from "../webcontainer/files";
 import type { FileChange } from "./types";
 
 /**
@@ -39,7 +38,6 @@ export function parseFileBlocks(
       path: rawPath,
       op: existing[rawPath] !== undefined ? "update" : "create",
       content,
-      language: languageFromPath(rawPath),
     });
   }
 

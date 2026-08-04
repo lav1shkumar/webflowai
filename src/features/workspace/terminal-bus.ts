@@ -1,11 +1,13 @@
 "use client";
 
-type DataListener = (chunk: string) => void;
-type ClearListener = () => void;
+interface TerminalSubscriber {
+  write: (chunk: string) => void;
+  clear: () => void;
+}
 
 /**
  * A tiny pub/sub bridge between producers of terminal output (the
- * WebContainer process streams and the agent pipeline) and the xterm.js
+ * WebContainer process streams and the generation pipeline) and the xterm.js
  * renderer. Output is raw — ANSI escape codes are preserved so xterm can
  * interpret cursor moves, line clears, colors, and spinners correctly.
  *
@@ -13,15 +15,13 @@ type ClearListener = () => void;
  * that was produced before it subscribed.
  */
 class TerminalBus {
-  private dataListeners = new Set<DataListener>();
-  private clearListeners = new Set<ClearListener>();
+  private subscribers = new Set<TerminalSubscriber>();
   private buffer: string[] = [];
-  private readonly maxBuffer = 4000;
 
   write(chunk: string): void {
     this.buffer.push(chunk);
-    if (this.buffer.length > this.maxBuffer) this.buffer.shift();
-    this.dataListeners.forEach((l) => l(chunk));
+    if (this.buffer.length > 4000) this.buffer.shift();
+    this.subscribers.forEach((subscriber) => subscriber.write(chunk));
   }
 
   /** Write a discrete line (adds a CRLF for correct xterm line breaks). */
@@ -31,22 +31,14 @@ class TerminalBus {
 
   clear(): void {
     this.buffer = [];
-    this.clearListeners.forEach((l) => l());
+    this.subscribers.forEach((subscriber) => subscriber.clear());
   }
 
-  onData(listener: DataListener): () => void {
-    this.dataListeners.add(listener);
-    return () => this.dataListeners.delete(listener);
-  }
-
-  onClear(listener: ClearListener): () => void {
-    this.clearListeners.add(listener);
-    return () => this.clearListeners.delete(listener);
-  }
-
-  /** Replay buffered output into a listener (e.g. on terminal mount). */
-  replay(listener: DataListener): void {
-    this.buffer.forEach((chunk) => listener(chunk));
+  /** Replay buffered output, then subscribe to future output and clears. */
+  subscribe(subscriber: TerminalSubscriber): () => void {
+    this.buffer.forEach((chunk) => subscriber.write(chunk));
+    this.subscribers.add(subscriber);
+    return () => this.subscribers.delete(subscriber);
   }
 }
 

@@ -2,13 +2,11 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getCurrentDbUser } from "@/server/user";
-import { razorpayProvider } from "@/features/billing/razorpay";
+import { createRazorpayCheckout } from "@/features/billing/razorpay";
 
 const schema = z.object({
   planId: z.enum(["free", "pro", "team"]),
   cycle: z.enum(["monthly", "annual"]),
-  email: z.string().email().optional(),
-  name: z.string().optional(),
 });
 
 /**
@@ -32,7 +30,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const { planId, cycle, email, name } = parsed.data;
+  const { planId, cycle } = parsed.data;
 
   if (planId === "free") {
     return NextResponse.json(
@@ -43,11 +41,10 @@ export async function POST(request: Request) {
 
   try {
     const user = await getCurrentDbUser();
-    const session = await razorpayProvider.createSubscriptionCheckout({
+    const session = await createRazorpayCheckout({
       planId,
       cycle,
-      customerEmail: email ?? user?.email ?? "demo@webflowai.dev",
-      customerName: name ?? user?.name ?? undefined,
+      customerEmail: user?.email ?? "demo@webflowai.dev",
     });
 
     // Record the attempt as a pending payment (needs a subscription to hang

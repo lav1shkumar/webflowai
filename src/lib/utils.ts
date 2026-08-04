@@ -6,14 +6,6 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/** Format a number as a compact, human-readable string (e.g. 12.4k). */
-export function formatCompact(n: number): string {
-  return new Intl.NumberFormat("en-US", {
-    notation: "compact",
-    maximumFractionDigits: 1,
-  }).format(n);
-}
-
 /** Format an INR amount in paise to a localized currency string. */
 export function formatINR(paise: number): string {
   return new Intl.NumberFormat("en-IN", {
@@ -44,9 +36,4 @@ export function timeAgo(date: Date | string): string {
 /** Deterministic short id generator (client-safe). */
 export function shortId(prefix = "id"): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
-}
-
-/** Sleep helper for simulating async pipelines. */
-export function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

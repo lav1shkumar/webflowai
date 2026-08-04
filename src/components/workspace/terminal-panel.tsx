@@ -3,8 +3,7 @@
 import * as React from "react";
 import { Trash2, TerminalSquare } from "lucide-react";
 import { useTheme } from "next-themes";
-import type { Terminal as XTerm } from "@xterm/xterm";
-import type { ITheme } from "@xterm/xterm";
+import type { ITheme, Terminal as XTerm } from "@xterm/xterm";
 import type { FitAddon as XFitAddon } from "@xterm/addon-fit";
 import { webContainerService } from "@/features/webcontainer/service";
 import { terminalBus } from "@/features/workspace/terminal-bus";
@@ -73,6 +72,7 @@ export function TerminalPanel() {
   const termRef = React.useRef<XTerm | null>(null);
   const { resolvedTheme } = useTheme();
   const isLight = resolvedTheme === "light";
+  const theme = isLight ? lightTheme : darkTheme;
 
   React.useEffect(() => {
     let disposed = false;
@@ -86,13 +86,12 @@ export function TerminalPanel() {
       if (disposed || !containerRef.current) return;
 
       const term = new Terminal({
-        convertEol: false,
         cursorBlink: true,
         fontSize: 12.5,
         lineHeight: 1.35,
         fontFamily:
           "ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, Consolas, monospace",
-        theme: isLight ? lightTheme : darkTheme,
+        theme,
       });
       const fit = new FitAddon();
       term.loadAddon(fit);
@@ -100,10 +99,10 @@ export function TerminalPanel() {
       safeFit(fit);
       termRef.current = term;
 
-      // Render buffered output, then stream live output.
-      terminalBus.replay((chunk) => term.write(chunk));
-      const offData = terminalBus.onData((chunk) => term.write(chunk));
-      const offClear = terminalBus.onClear(() => term.clear());
+      const unsubscribe = terminalBus.subscribe({
+        write: (chunk) => term.write(chunk),
+        clear: () => term.clear(),
+      });
 
       // Forward keystrokes to the interactive shell.
       const keyDisposable = term.onData((data) =>
@@ -130,8 +129,7 @@ export function TerminalPanel() {
       ro.observe(containerRef.current);
 
       cleanup = () => {
-        offData();
-        offClear();
+        unsubscribe();
         keyDisposable.dispose();
         ro.disconnect();
         term.dispose();
@@ -151,9 +149,9 @@ export function TerminalPanel() {
   // Update the xterm palette live when the app theme changes.
   React.useEffect(() => {
     if (termRef.current) {
-      termRef.current.options.theme = isLight ? lightTheme : darkTheme;
+      termRef.current.options.theme = theme;
     }
-  }, [isLight]);
+  }, [theme]);
 
   return (
     <div className="flex h-full flex-col bg-background">

@@ -2,27 +2,22 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
 import {
   ArrowUp,
   Check,
   Clock,
-  Code2,
   Coins,
   FileText,
   Loader2,
   Sparkles,
   X,
   Zap,
-  type LucideIcon,
 } from "lucide-react";
 import {
   useWorkspace,
   type ChatMessage,
-  type ChatStep,
   type CreditsState,
 } from "@/features/workspace/store";
-import type { AgentKind } from "@/features/ai/types";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -175,7 +170,7 @@ function EmptyChat() {
       </div>
       <p className="mt-4 text-sm font-medium">Describe what to build</p>
       <p className="mt-1 max-w-[220px] text-xs text-muted-foreground">
-        The agents will plan, generate, and review the code, then run it live.
+        The AI will generate and update your project files.
       </p>
     </div>
   );
@@ -198,9 +193,9 @@ function MessageBubble({ message }: { message: ChatMessage }) {
         <AvatarFallback className="text-[10px]">AI</AvatarFallback>
       </Avatar>
       <div className="min-w-0 flex-1 space-y-2.5">
-        {message.steps && message.steps.length > 0 && (
-          <AgentTimeline
-            steps={message.steps}
+        {message.status && (
+          <GenerationStatus
+            status={message.status}
             fileCount={dedupe(message.files ?? []).length}
           />
         )}
@@ -247,129 +242,62 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   );
 }
 
-/** The generation pipeline shown as a simple timeline. */
-const PIPELINE: {
-  agent: AgentKind;
-  label: string;
-  doneLabel: string;
-  errorLabel: string;
-  Icon: LucideIcon;
-}[] = [
-  {
-    agent: "generator",
-    label: "Generating code",
-    doneLabel: "Code generated",
-    errorLabel: "Generation failed",
-    Icon: Code2,
-  },
-];
-
-type StageStatus = ChatStep["status"] | "pending";
-
-/**
- * Living pipeline: the four agents shown as a vertical timeline with a
- * connector that fills as stages complete, the active stage pulsing, and a
- * short status line per stage. Stages not yet started render as "pending".
- */
-function AgentTimeline({
-  steps,
+function GenerationStatus({
+  status,
   fileCount,
 }: {
-  steps: ChatStep[];
+  status: NonNullable<ChatMessage["status"]>;
   fileCount: number;
 }) {
-  const byAgent = new Map<AgentKind, ChatStep["status"]>(
-    steps.map((s) => [s.agent, s.status]),
-  );
+  const running = status === "running";
+  const done = status === "done";
+  const label = running
+    ? "Generating code"
+    : done
+      ? "Code generated"
+      : "Generation failed";
+  const detail = running
+    ? "Working…"
+    : done && fileCount > 0
+      ? `${fileCount} file${fileCount === 1 ? "" : "s"}`
+      : done
+        ? "Done"
+        : "Failed";
 
   return (
     <div className="rounded-xl border border-border bg-foreground/[0.02] p-3">
-      <ol className="space-y-0">
-        {PIPELINE.map((stage, i) => {
-          const status: StageStatus = byAgent.get(stage.agent) ?? "pending";
-          const done = status === "done";
-          const running = status === "running";
-          const error = status === "error";
-          const isLast = i === PIPELINE.length - 1;
-          const Icon = stage.Icon;
-
-          const label = done
-            ? stage.doneLabel
-            : error
-              ? stage.errorLabel
-              : stage.label;
-
-          const subline = running
-            ? "Working…"
-            : done
-              ? stage.agent === "generator" && fileCount > 0
-                ? `${fileCount} file${fileCount === 1 ? "" : "s"}`
-                : "Done"
-              : error
-                ? "Failed"
-                : "Pending";
-
-          return (
-            <li key={stage.agent} className="relative flex gap-3">
-              {!isLast && (
-                <span
-                  className={cn(
-                    "absolute left-[13px] top-[30px] bottom-1 w-px transition-colors",
-                    done ? "bg-primary/60" : "bg-border",
-                  )}
-                />
-              )}
-              <div className="relative z-10">
-                <motion.span
-                  initial={{ scale: 0.6, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ duration: 0.25 }}
-                  className={cn(
-                    "relative flex h-[26px] w-[26px] items-center justify-center rounded-full border transition-colors",
-                    done && "border-transparent bg-primary text-primary-foreground",
-                    running && "border-primary/50 bg-primary/10 text-primary",
-                    error && "border-red-500/40 bg-red-500/10 text-red-400",
-                    !done &&
-                      !running &&
-                      !error &&
-                      "border-border bg-background text-muted-foreground",
-                  )}
-                >
-                  {running ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : done ? (
-                    <Check className="h-3.5 w-3.5" />
-                  ) : error ? (
-                    <X className="h-3.5 w-3.5" />
-                  ) : (
-                    <Icon className="h-3.5 w-3.5" />
-                  )}
-                  {running && (
-                    <span className="absolute inset-0 animate-ping rounded-full ring-2 ring-primary/30" />
-                  )}
-                </motion.span>
-              </div>
-              <div className="min-w-0 flex-1">
-                <div
-                  className={cn(
-                    "text-xs font-medium leading-6",
-                    done || running
-                      ? "text-foreground"
-                      : error
-                        ? "text-red-400"
-                        : "text-muted-foreground",
-                  )}
-                >
-                  {label}
-                </div>
-                <div className="-mt-0.5 text-[11px] text-muted-foreground">
-                  {subline}
-                </div>
-              </div>
-            </li>
-          );
-        })}
-      </ol>
+      <div className="flex gap-3">
+        <span
+          className={cn(
+            "relative flex h-[26px] w-[26px] items-center justify-center rounded-full border",
+            done && "border-transparent bg-primary text-primary-foreground",
+            running && "border-primary/50 bg-primary/10 text-primary",
+            status === "error" &&
+              "border-red-500/40 bg-red-500/10 text-red-400",
+          )}
+        >
+          {running ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : done ? (
+            <Check className="h-3.5 w-3.5" />
+          ) : (
+            <X className="h-3.5 w-3.5" />
+          )}
+        </span>
+        <div>
+          <div
+            className={cn(
+              "text-xs font-medium leading-6",
+              status === "error" ? "text-red-400" : "text-foreground",
+            )}
+          >
+            {label}
+          </div>
+          <div className="-mt-0.5 text-[11px] text-muted-foreground">
+            {detail}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

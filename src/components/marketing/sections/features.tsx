@@ -3,7 +3,6 @@ import {
   Boxes,
   GitBranch,
   Globe,
-  ShieldCheck,
   TerminalSquare,
   Workflow,
   Zap,
@@ -14,9 +13,9 @@ import { Reveal } from "@/components/shared/reveal";
 const features = [
   {
     icon: Bot,
-    title: "Multi-agent generation",
+    title: "AI code generation",
     description:
-      "Planner, Architect, Generator, and Reviewer agents collaborate to ship correct, idiomatic code.",
+      "Generate complete applications and refine them through conversation.",
     span: "lg:col-span-2",
   },
   {
@@ -40,8 +39,8 @@ const features = [
   },
   {
     icon: Zap,
-    title: "Streaming responses",
-    description: "Watch code and reasoning stream token-by-token.",
+    title: "Live file updates",
+    description: "Watch files appear in the workspace as they are generated.",
   },
   {
     icon: Boxes,
@@ -50,8 +49,8 @@ const features = [
   },
   {
     icon: GitBranch,
-    title: "Versioned changes",
-    description: "Every generation is an auditable, reversible set of file changes.",
+    title: "Project-aware edits",
+    description: "The AI reads existing files and updates only what needs to change.",
   },
 ];
 

@@ -3,23 +3,14 @@ import { generate } from "@/features/ai/generate";
 import { prisma } from "@/lib/prisma";
 import { getCurrentDbUser } from "@/server/user";
 import { creditsForTokens } from "@/lib/credits";
-import { env } from "@/lib/env";
+import type { GenerationEvent } from "@/features/ai/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
 const schema = z.object({
-  projectId: z.string().min(1),
   prompt: z.string().min(1),
   files: z.record(z.string(), z.string()).optional(),
-  history: z
-    .array(
-      z.object({
-        role: z.enum(["user", "assistant"]),
-        content: z.string(),
-      }),
-    )
-    .optional(),
 });
 
 /**
@@ -42,12 +33,19 @@ export async function POST(request: Request) {
     );
   }
 
-  const { projectId, prompt, files, history } = parsed.data;
+  const { prompt, files } = parsed.data;
 
   // Require AI backend to be configured.
-  if (!env.vertexApiKey) {
+  if (
+    !process.env.AZURE_OPENAI_API_KEY ||
+    !process.env.AZURE_RESOURCE_NAME ||
+    !process.env.WEBFLOWAI_MODEL
+  ) {
     return Response.json(
-      { error: "AI backend not configured. Set GOOGLE_VERTEX_API_KEY." },
+      {
+        error:
+          "AI backend not configured. Set AZURE_OPENAI_API_KEY, AZURE_RESOURCE_NAME, and WEBFLOWAI_MODEL.",
+      },
       { status: 503 },
     );
   }
@@ -69,37 +67,22 @@ export async function POST(request: Request) {
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const send = (event: Record<string, unknown>) => {
+      const send = (event: GenerationEvent) => {
         controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
       };
 
       try {
-        // Signal the UI that generation is in progress
-        send({ type: "phase", agent: "generator", phase: "running" });
+        send({ type: "status", status: "running" });
 
         const result = await generate({
-          projectId,
           prompt,
           files: files ?? {},
-          history: history ?? [],
           signal: request.signal,
-          maxFixAttempts: 2,
-          onToken: (text) => send({ type: "token", text }),
-          onFileChange: (change) => send({ type: "file", agent: "generator", change }),
-          onLog: (message) => send({ type: "log", agent: "generator", message }),
+          onFileChange: (change) => send({ type: "file", change }),
+          onLog: (message) => send({ type: "log", message }),
         });
 
-        // Send a review summary so the UI has an assistant message
-        send({ type: "phase", agent: "generator", phase: "succeeded" });
-        send({
-          type: "review",
-          review: {
-            approved: true,
-            score: 100,
-            issues: [],
-            summary: `Applied ${result.changes.length} file change(s).`,
-          },
-        });
+        send({ type: "status", status: "succeeded" });
 
         // Deduct credits
         let creditsUsed = 0;
@@ -120,17 +103,15 @@ export async function POST(request: Request) {
 
         send({
           type: "done",
-          ok: result.ok,
-          fileCount: Object.keys(result.files).length,
-          tokens: result.tokens,
+          summary: `Applied ${result.changes.length} file change(s).`,
           creditsUsed,
           creditsRemaining,
           signedIn: Boolean(user),
         });
       } catch (err) {
-        send({ type: "phase", agent: "generator", phase: "failed" });
+        send({ type: "status", status: "failed" });
         send({
-          type: "fatal",
+          type: "error",
           message: err instanceof Error ? err.message : "Generation failed",
         });
       } finally {

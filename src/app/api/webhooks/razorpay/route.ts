@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { razorpayProvider } from "@/features/billing/razorpay";
+import { verifyRazorpayWebhook } from "@/features/billing/razorpay";
 import {
   activatePaidSubscription,
   type PaidPlanId,
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
   const signature = request.headers.get("x-razorpay-signature") ?? "";
   const payload = await request.text();
 
-  if (!razorpayProvider.verifyWebhookSignature(payload, signature)) {
+  if (!verifyRazorpayWebhook(payload, signature)) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 

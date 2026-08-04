@@ -10,21 +10,15 @@ export type ServerStatus =
   | "ready"
   | "error";
 
-export interface WebContainerCallbacks {
+interface WebContainerCallbacks {
   onStatus?: (status: ServerStatus) => void;
-  onServerReady?: (url: string, port: number) => void;
+  onServerReady?: (url: string) => void;
   onOutput?: (chunk: string) => void;
   onError?: (message: string) => void;
 }
 
-/**
- * Thin, framework-agnostic wrapper around the `@webcontainer/api` runtime.
- * Boots a single shared container, mounts files, and manages the dev server
- * lifecycle. The `useWorkspace` store wires its callbacks to UI state.
- */
-export class WebContainerService {
-  private static instance: WebContainerService | null = null;
-  private container: WebContainer | null = null;
+/** Manages the one WebContainer shared by the workspace. */
+class WebContainerService {
   private bootPromise: Promise<WebContainer> | null = null;
   private devProcess: WebContainerProcess | null = null;
   private shellProcess: WebContainerProcess | null = null;
@@ -32,15 +26,8 @@ export class WebContainerService {
   private callbacks: WebContainerCallbacks = {};
   private mounted = false;
 
-  static get(): WebContainerService {
-    if (!WebContainerService.instance) {
-      WebContainerService.instance = new WebContainerService();
-    }
-    return WebContainerService.instance;
-  }
-
   setCallbacks(callbacks: WebContainerCallbacks): void {
-    this.callbacks = { ...this.callbacks, ...callbacks };
+    this.callbacks = callbacks;
   }
 
   get isSupported(): boolean {
@@ -55,135 +42,55 @@ export class WebContainerService {
     return this.mounted;
   }
 
-  /** Boot the WebContainer runtime (idempotent). */
-  async boot(): Promise<WebContainer> {
-    if (this.container) return this.container;
-    if (this.bootPromise) return this.bootPromise;
-
-    this.bootPromise = (async () => {
-      // Dynamic import keeps the heavy runtime out of the marketing bundle.
-      const { WebContainer } = await import("@webcontainer/api");
-      const instance = await WebContainer.boot();
-      this.container = instance;
-      instance.on("server-ready", (port, url) => {
-        this.setStatus("ready");
-        this.callbacks.onServerReady?.(url, port);
-      });
-      instance.on("error", (err) => {
-        this.callbacks.onError?.(err.message);
-        this.setStatus("error");
-      });
-      return instance;
-    })();
-
-    return this.bootPromise;
-  }
-
-  /** Mount a full project filesystem from a flat path→content map. */
-  async mount(files: Record<string, string>): Promise<void> {
+  /** Mount the project, install its dependencies, and start its dev server. */
+  async start(files: Record<string, string>): Promise<void> {
     this.setStatus("booting");
     const container = await this.boot();
     this.setStatus("mounting");
     await container.mount(toFileSystemTree(files));
     this.mounted = true;
+
+    if (await this.installDependencies()) {
+      await this.spawnDevServer();
+    }
   }
 
-  /** Mirror a single created/updated file into the running container. */
+  /** Mirror a created or updated file into the mounted container. */
   async syncFile(path: string, content: string): Promise<void> {
     if (!this.mounted) return;
-    await this.writeFile(path, content);
-  }
-
-  /** Mirror a file deletion into the running container. */
-  async syncDelete(path: string): Promise<void> {
-    if (!this.mounted) return;
-    try {
-      await this.removeFile(path);
-    } catch {
-      /* already absent */
-    }
-  }
-
-  /** Reinstall dependencies and restart the dev server (on package.json changes). */
-  async resyncDependencies(): Promise<void> {
-    if (!this.mounted) return;
-    this.setStatus("installing");
-    const installExit = await this.run("npm", ["install"]);
-    if (installExit !== 0) {
-      this.callbacks.onError?.(`Install failed (exit ${installExit}).`);
-      this.setStatus("error");
-      return;
-    }
-    this.devProcess?.kill();
-    this.devProcess = null;
-    await this.spawnDev();
-  }
-
-  /** Write or overwrite a single file, creating parent dirs as needed. */
-  private async writeFile(path: string, content: string): Promise<void> {
     const container = await this.boot();
-    const dir = path.split("/").slice(0, -1).join("/");
-    if (dir) await container.fs.mkdir(dir, { recursive: true });
+    const directory = path.split("/").slice(0, -1).join("/");
+    if (directory) await container.fs.mkdir(directory, { recursive: true });
     await container.fs.writeFile(path, content);
   }
 
-  private async removeFile(path: string): Promise<void> {
-    const container = await this.boot();
-    await container.fs.rm(path, { recursive: true, force: true });
-  }
-
-  /** Spawn a command, streaming stdout to the terminal. Resolves with exit code. */
-  private async run(command: string, args: string[] = []): Promise<number> {
-    const container = await this.boot();
-    this.callbacks.onOutput?.(`\u001b[36m$ ${command} ${args.join(" ")}\u001b[0m\r\n`);
-    const process = await container.spawn(command, args);
-    process.output.pipeTo(
-      new WritableStream({
-        write: (chunk) => this.callbacks.onOutput?.(chunk),
-      }),
-    );
-    return process.exit;
-  }
-
-  /** Install dependencies then start the dev server. */
-  async startDevServer(
-    installCommand: [string, string[]] = ["npm", ["install"]],
-    devCommand: [string, string[]] = ["npm", ["run", "dev"]],
-  ): Promise<void> {
-    await this.boot();
-    this.setStatus("installing");
-    const installExit = await this.run(installCommand[0], installCommand[1]);
-    if (installExit !== 0) {
-      this.callbacks.onError?.(`Install failed (exit ${installExit}).`);
-      this.setStatus("error");
-      return;
+  /** Remove a file or directory from the mounted container. */
+  async syncDelete(path: string): Promise<void> {
+    if (!this.mounted) return;
+    try {
+      const container = await this.boot();
+      await container.fs.rm(path, { recursive: true, force: true });
+    } catch {
+      // The path may already be absent.
     }
-    await this.spawnDev(devCommand);
   }
 
-  /** Spawn the dev server process and stream its output. */
-  private async spawnDev(
-    devCommand: [string, string[]] = ["npm", ["run", "dev"]],
-  ): Promise<void> {
-    const container = await this.boot();
-    this.setStatus("starting");
-    this.devProcess = await container.spawn(devCommand[0], devCommand[1]);
-    this.devProcess.output.pipeTo(
-      new WritableStream({
-        write: (chunk) => this.callbacks.onOutput?.(chunk),
-      }),
-    );
-    // `server-ready` event flips status to "ready".
+  /** Reinstall dependencies after package.json changes, then restart. */
+  async resyncDependencies(): Promise<void> {
+    if (!this.mounted || !(await this.installDependencies())) return;
+    this.stopDevServer();
+    await this.spawnDevServer();
   }
 
-  /** Tear down and restart the dev server process. */
+  /** Reinstall dependencies and restart the current project. */
   async restart(): Promise<void> {
-    this.devProcess?.kill();
-    this.devProcess = null;
-    await this.startDevServer();
+    this.stopDevServer();
+    if (await this.installDependencies()) {
+      await this.spawnDevServer();
+    }
   }
 
-  /** Start an interactive `jsh` shell wired to the terminal. Idempotent. */
+  /** Start an interactive shell for the terminal. */
   async startShell(cols: number, rows: number): Promise<void> {
     const container = await this.boot();
     if (this.shellProcess) return;
@@ -193,12 +100,7 @@ export class WebContainerService {
     });
     this.shellProcess = shell;
     this.shellWriter = shell.input.getWriter();
-
-    shell.output.pipeTo(
-      new WritableStream({
-        write: (chunk) => this.callbacks.onOutput?.(chunk),
-      }),
-    );
+    this.pipeOutput(shell);
 
     shell.exit.then(() => {
       this.shellProcess = null;
@@ -206,14 +108,73 @@ export class WebContainerService {
     });
   }
 
-  /** Send keystrokes / input to the interactive shell. */
   writeToShell(data: string): void {
     void this.shellWriter?.write(data);
   }
 
-  /** Resize the shell PTY to match the rendered terminal. */
   resizeShell(cols: number, rows: number): void {
     this.shellProcess?.resize({ cols, rows });
+  }
+
+  private async boot(): Promise<WebContainer> {
+    if (!this.bootPromise) {
+      this.bootPromise = (async () => {
+        const { WebContainer } = await import("@webcontainer/api");
+        const container = await WebContainer.boot();
+
+        container.on("server-ready", (_port, url) => {
+          this.setStatus("ready");
+          this.callbacks.onServerReady?.(url);
+        });
+        container.on("error", (error) => {
+          this.callbacks.onError?.(error.message);
+          this.setStatus("error");
+        });
+
+        return container;
+      })();
+    }
+    return this.bootPromise;
+  }
+
+  private async installDependencies(): Promise<boolean> {
+    this.setStatus("installing");
+    const exitCode = await this.run("npm", ["install"]);
+    if (exitCode === 0) return true;
+
+    this.callbacks.onError?.(`Install failed (exit ${exitCode}).`);
+    this.setStatus("error");
+    return false;
+  }
+
+  private async run(command: string, args: string[]): Promise<number> {
+    const container = await this.boot();
+    this.callbacks.onOutput?.(
+      `\u001b[36m$ ${command} ${args.join(" ")}\u001b[0m\r\n`,
+    );
+    const process = await container.spawn(command, args);
+    this.pipeOutput(process);
+    return process.exit;
+  }
+
+  private async spawnDevServer(): Promise<void> {
+    const container = await this.boot();
+    this.setStatus("starting");
+    this.devProcess = await container.spawn("npm", ["run", "dev"]);
+    this.pipeOutput(this.devProcess);
+  }
+
+  private stopDevServer(): void {
+    this.devProcess?.kill();
+    this.devProcess = null;
+  }
+
+  private pipeOutput(process: WebContainerProcess): void {
+    void process.output.pipeTo(
+      new WritableStream({
+        write: (chunk) => this.callbacks.onOutput?.(chunk),
+      }),
+    );
   }
 
   private setStatus(status: ServerStatus): void {
@@ -221,4 +182,4 @@ export class WebContainerService {
   }
 }
 
-export const webContainerService = WebContainerService.get();
+export const webContainerService = new WebContainerService();
