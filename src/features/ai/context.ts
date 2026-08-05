@@ -33,6 +33,7 @@ const IGNORED_PATTERNS = [
   /package-lock\.json$/,
   /pnpm-lock\.yaml$/,
   /yarn\.lock$/,
+  /(^|\/)\.env(?:$|\.(?!example$))/i,
   /\.(png|jpe?g|gif|webp|ico|svg|woff2?|ttf|eot|mp4|pdf)$/i,
 ];
 

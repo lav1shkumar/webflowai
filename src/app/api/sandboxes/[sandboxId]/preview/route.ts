@@ -1,4 +1,4 @@
-import { Sandbox } from "e2b";
+import { Sandbox, SandboxNotFoundError } from "e2b";
 import { prisma } from "@/lib/prisma";
 import { E2B_PREVIEW_PORT, E2B_PROJECT_DIR } from "@/server/e2b";
 import { getCurrentDbUser } from "@/server/user";
@@ -46,21 +46,23 @@ export async function POST(
         });
 
         send({ type: "status", status: "starting" });
-        await sandbox.commands.run("pkill -f '[n]ext dev' || true", {
+        await sandbox.commands.run("pkill -f '[n]ext dev|[v]ite' || true", {
           cwd: E2B_PROJECT_DIR,
         });
 
         const host = sandbox.getHost(E2B_PREVIEW_PORT);
+        const hostname = host.startsWith("http") ? new URL(host).hostname : host;
         const url = host.startsWith("http") ? host : `https://${host}`;
-        const devServer = await sandbox.commands.run(
-          `npm run dev -- --hostname 0.0.0.0 --port ${E2B_PREVIEW_PORT}`,
-          {
-            cwd: E2B_PROJECT_DIR,
-            background: true,
-            onStdout: (data) => send({ type: "log", data }),
-            onStderr: (data) => send({ type: "log", data }),
+        const devServer = await sandbox.commands.run("npm run dev", {
+          cwd: E2B_PROJECT_DIR,
+          envs: {
+            PORT: String(E2B_PREVIEW_PORT),
+            __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: hostname,
           },
-        );
+          background: true,
+          onStdout: (data) => send({ type: "log", data }),
+          onStderr: (data) => send({ type: "log", data }),
+        });
 
         try {
           await sandbox.commands.run(
@@ -69,7 +71,7 @@ export async function POST(
           );
         } catch {
           await devServer.kill();
-          throw new Error("Next.js did not become ready in time");
+          throw new Error("Dev server did not become ready in time");
         }
 
         await devServer.disconnect();
@@ -78,6 +80,10 @@ export async function POST(
         send({
           type: "error",
           message: error instanceof Error ? error.message : "Preview failed",
+          code:
+            error instanceof SandboxNotFoundError
+              ? "sandbox-not-found"
+              : undefined,
         });
       } finally {
         if (!closed) controller.close();

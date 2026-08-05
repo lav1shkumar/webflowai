@@ -9,7 +9,11 @@ export interface FileChange {
 export type GenerationEvent =
   | { type: "status"; status: "running" | "succeeded" | "failed" }
   | { type: "log"; message: string }
-  | { type: "file"; change: FileChange }
+  | {
+      type: "stage";
+      stage: "context" | "planning" | "generation" | "verification";
+      message: string;
+    }
   | {
       type: "done";
       summary: string;

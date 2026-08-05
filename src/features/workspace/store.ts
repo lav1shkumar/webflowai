@@ -3,7 +3,7 @@
 import { create } from "zustand";
 import { buildFileTree, type FileNode } from "@/features/workspace/files";
 import { terminalBus } from "@/features/workspace/terminal-bus";
-import { getProjectState, saveProjectState } from "@/server/projects";
+import { getProjectState } from "@/server/projects";
 import { getTokens } from "@/server/tokens";
 import type { GenerationEvent } from "@/features/ai/types";
 import { shortId } from "@/lib/utils";
@@ -22,6 +22,8 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   status?: "running" | "done" | "error";
+  stage?: "context" | "planning" | "generation" | "verification";
+  stageMessage?: string;
   files?: string[];
   tokens?: number;
   durationMs?: number;
@@ -141,7 +143,11 @@ type PreviewEvent =
   | { type: "status"; status: ServerStatus }
   | { type: "log"; data: string }
   | { type: "ready"; url: string }
-  | { type: "error"; message: string };
+  | {
+      type: "error";
+      message: string;
+      code?: "sandbox-not-found";
+    };
 
 async function streamPreview(
   sandboxId: string,
@@ -157,11 +163,19 @@ async function streamPreview(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let ready = false;
 
   const handleLine = (line: string) => {
     if (!line.trim()) return;
     const event = JSON.parse(line) as PreviewEvent;
-    if (event.type === "error") throw new Error(event.message);
+    if (event.type === "error") {
+      const error = new Error(event.message);
+      if (event.code === "sandbox-not-found") {
+        error.name = "SandboxNotFoundError";
+      }
+      throw error;
+    }
+    if (event.type === "ready") ready = true;
     onEvent(event);
   };
 
@@ -176,12 +190,13 @@ async function streamPreview(
     }
   }
   if (buffer) handleLine(buffer);
+  if (!ready) throw new Error("Preview stream ended before the server was ready");
 }
 
 async function runViaServer(
   input: {
+    projectId: string;
     prompt: string;
-    files: Record<string, string>;
   },
   onEvent: (event: GenerationEvent) => void,
 ): Promise<ServerRunOutput> {
@@ -209,6 +224,7 @@ async function runViaServer(
     tokensRemaining: null,
     signedIn: false,
   };
+  let completed = false;
 
   const handleLine = (line: string) => {
     const trimmed = line.trim();
@@ -224,6 +240,7 @@ async function runViaServer(
       throw new Error(event.message);
     }
     if (event.type === "done") {
+      completed = true;
       result.summary = event.summary;
       result.signedIn = event.signedIn;
       result.tokensUsed = event.tokensUsed;
@@ -244,6 +261,7 @@ async function runViaServer(
     }
   }
   if (buffer) handleLine(buffer);
+  if (!completed) throw new Error("generation-stream-ended");
 
   return result;
 }
@@ -394,6 +412,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       id: assistantId,
       role: "assistant",
       content: "",
+      status: "running",
+      stage: "context",
       files: [],
       createdAt: Date.now(),
     };
@@ -404,8 +424,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }));
 
     const startedAt = Date.now();
-    const deletedPaths = new Set<string>();
-
     const updateAssistant = (patch: Partial<ChatMessage>) =>
       set((s) => ({
         messages: s.messages.map((m) =>
@@ -425,33 +443,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
                   : "running",
           });
           break;
-        case "file": {
-          const { change } = event;
-          const content = change.op === "delete" ? "" : (change.content ?? "");
-          if (change.op === "delete") deletedPaths.add(change.path);
-          else deletedPaths.delete(change.path);
-          set((s) => {
-            const files = { ...s.files };
-            if (change.op === "delete") {
-              delete files[change.path];
-            } else {
-              files[change.path] = content;
-            }
-            return {
-              files,
-              tree: buildFileTree(files),
-              activeFilePath: s.activeFilePath ?? change.path,
-            };
+        case "stage":
+          updateAssistant({
+            stage: event.stage,
+            stageMessage: event.message,
           });
-          set((s) => ({
-            messages: s.messages.map((m) =>
-              m.id === assistantId
-                ? { ...m, files: [...(m.files ?? []), change.path] }
-                : m,
-            ),
-          }));
           break;
-        }
       }
     };
 
@@ -459,26 +456,25 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
     try {
       const { summary, tokensUsed, tokensRemaining, signedIn } =
-        await runViaServer({ prompt, files: get().files }, onEvent);
-
-      const sandboxId = get().sandboxId;
-      if (sandboxId) {
-        if (deletedPaths.size > 0) {
-          await patchSandbox(sandboxId, {
-            action: "removeFiles",
-            paths: [...deletedPaths],
-          });
-        }
-        const files = get().files;
-        if (Object.keys(files).length > 0) {
-          await patchSandbox(sandboxId, { action: "writeFiles", files });
-        }
-      }
+        await runViaServer({ projectId, prompt }, onEvent);
 
       updateAssistant({
         content: summary,
         ...(tokensUsed != null ? { tokens: tokensUsed } : {}),
       });
+
+      const state = await getProjectState(projectId);
+      if (state && get().projectId === projectId) {
+        const activeFilePath = get().activeFilePath;
+        set({
+          files: state.files,
+          tree: buildFileTree(state.files),
+          activeFilePath:
+            activeFilePath && state.files[activeFilePath] !== undefined
+              ? activeFilePath
+              : Object.keys(state.files)[0] ?? null,
+        });
+      }
 
       if (signedIn && tokensRemaining != null) {
         set({
@@ -498,11 +494,20 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       }
 
       updateAssistant({
-        content:
-          serverErr instanceof Error
-            ? `Generation failed: ${serverErr.message}`
-            : "Generation failed — check the terminal for details.",
+        content: "",
         status: "error",
+        stageMessage:
+          serverErr instanceof Error &&
+          [
+            "network error",
+            "Failed to fetch",
+            "Load failed",
+            "generation-stream-ended",
+          ].includes(serverErr.message)
+            ? "Generation stopped because the connection was lost."
+            : serverErr instanceof Error
+              ? serverErr.message
+              : "Something went wrong. Please try again.",
       });
     } finally {
       set({ isGenerating: false });
@@ -517,17 +522,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         void get().restartPreview();
       }
 
-      void (async () => {
-        try {
-          const s = get();
-          await saveProjectState(projectId, {
-            files: s.files,
-            messages: s.messages
-              .filter((m) => m.content)
-              .map((m) => ({ role: m.role, content: m.content })),
-          });
-        } catch { /* persistence unavailable */ }
-      })();
     }
   },
 
@@ -712,13 +706,38 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
     set({ serverStatus: "installing", previewUrl: null });
     try {
-      await streamPreview(sandboxId, (event) => {
+      const onEvent = (event: PreviewEvent) => {
         if (event.type === "status") set({ serverStatus: event.status });
         if (event.type === "log") terminalBus.write(event.data);
         if (event.type === "ready") {
           set({ previewUrl: event.url, serverStatus: "ready" });
         }
-      });
+      };
+
+      try {
+        await streamPreview(sandboxId, onEvent);
+      } catch (error) {
+        if (!(error instanceof Error) || error.name !== "SandboxNotFoundError") {
+          throw error;
+        }
+
+        terminalBus.writeLine(
+          "\u001b[36m[preview] Sandbox expired — recovering…\u001b[0m",
+        );
+        const response = await fetch(`/api/sandboxes/${sandboxId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "restart" }),
+        });
+        if (!response.ok) {
+          throw new Error(`Sandbox recovery failed (${response.status})`);
+        }
+
+        const data = (await response.json()) as { sandboxId: string };
+        sandboxId = data.sandboxId;
+        set({ sandboxId, serverStatus: "installing" });
+        await streamPreview(sandboxId, onEvent);
+      }
     } catch (err) {
       set({ serverStatus: "error" });
       terminalBus.writeLine(

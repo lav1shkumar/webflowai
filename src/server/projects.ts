@@ -222,7 +222,10 @@ export async function getProjectState(id: string): Promise<ProjectState | null> 
     where: { id, ownerId: user.id },
     include: {
       files: true,
-      messages: { orderBy: { createdAt: "asc" }, take: 200 },
+      messages: {
+        orderBy: [{ createdAt: "asc" }, { role: "asc" }],
+        take: 200,
+      },
     },
   });
   if (!project) return null;

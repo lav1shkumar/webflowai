@@ -1,17 +1,46 @@
 import { z } from "zod";
-import { generate } from "@/features/ai/generate";
+import { runCodingAgent } from "@/features/ai/agent";
 import { prisma } from "@/lib/prisma";
 import { getCurrentDbUser } from "@/server/user";
 import { usageTokensForModelTokens } from "@/lib/tokens";
+import { readProjectFiles } from "@/server/e2b";
 import type { GenerationEvent } from "@/features/ai/types";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 const schema = z.object({
+  projectId: z.string().min(1),
   prompt: z.string().min(1),
-  files: z.record(z.string(), z.string()).optional(),
 });
+
+async function persistRun(
+  projectId: string,
+  response: string,
+  status: "READY" | "ERROR",
+  files: Record<string, string> | null,
+) {
+  await prisma.$transaction(async (tx) => {
+    if (files) {
+      await tx.file.deleteMany({ where: { projectId } });
+      const entries = Object.entries(files);
+      if (entries.length > 0) {
+        await tx.file.createMany({
+          data: entries.map(([path, content]) => ({
+            projectId,
+            path,
+            content,
+            size: content.length,
+          })),
+        });
+      }
+    }
+    await tx.message.create({
+      data: { projectId, role: "ASSISTANT", content: response },
+    });
+    await tx.project.update({ where: { id: projectId }, data: { status } });
+  });
+}
 
 /**
  * Generation endpoint. Calls the AI to generate/modify code, streams progress
@@ -33,7 +62,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const { prompt, files } = parsed.data;
+  const { projectId, prompt } = parsed.data;
 
   // Require AI backend to be configured.
   if (
@@ -51,7 +80,10 @@ export async function POST(request: Request) {
   }
 
   const user = await getCurrentDbUser();
-  if (user && user.tokensBalance <= 0) {
+  if (!user) {
+    return Response.json({ error: "not-authenticated" }, { status: 401 });
+  }
+  if (user.tokensBalance <= 0) {
     return Response.json(
       {
         error: "insufficient-tokens",
@@ -61,58 +93,103 @@ export async function POST(request: Request) {
     );
   }
 
+  const project = await prisma.project.findFirst({
+    where: { id: projectId, ownerId: user.id },
+    select: { id: true, sandboxId: true },
+  });
+  if (!project) {
+    return Response.json({ error: "project-not-found" }, { status: 404 });
+  }
+  if (!project.sandboxId) {
+    return Response.json({ error: "sandbox-not-ready" }, { status: 409 });
+  }
+
+  await prisma.$transaction([
+    prisma.project.update({
+      where: { id: project.id },
+      data: { status: "GENERATING" },
+    }),
+    prisma.message.create({
+      data: {
+        projectId: project.id,
+        userId: user.id,
+        role: "USER",
+        content: prompt,
+      },
+    }),
+  ]);
+
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const send = (event: GenerationEvent) => {
-        controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
+        try {
+          controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
+        } catch {}
       };
+      const heartbeat = setInterval(
+        () => send({ type: "log", message: "" }),
+        15_000,
+      );
 
       try {
         send({ type: "status", status: "running" });
 
-        const result = await generate({
+        const result = await runCodingAgent({
           prompt,
-          files: files ?? {},
+          sandboxId: project.sandboxId!,
           signal: request.signal,
-          onFileChange: (change) => send({ type: "file", change }),
-          onLog: (message) => send({ type: "log", message }),
+          onStage: (stage, message) =>
+            send({ type: "stage", stage, message }),
         });
+        const files = await readProjectFiles(project.sandboxId!);
+
+        const tokensUsed = usageTokensForModelTokens(result.tokens);
+        let tokensRemaining = user.tokensBalance;
+        try {
+          const updated = await prisma.user.update({
+            where: { id: user.id },
+            data: { tokensBalance: { decrement: tokensUsed } },
+            select: { tokensBalance: true },
+          });
+          tokensRemaining = updated.tokensBalance;
+        } catch {}
+        await persistRun(
+          project.id,
+          result.summary,
+          "READY",
+          files,
+        );
 
         send({ type: "status", status: "succeeded" });
 
-        let tokensUsed = 0;
-        let tokensRemaining: number | null = null;
-        if (user) {
-          tokensUsed = usageTokensForModelTokens(result.tokens);
-          try {
-            const updated = await prisma.user.update({
-              where: { id: user.id },
-              data: { tokensBalance: { decrement: tokensUsed } },
-              select: { tokensBalance: true },
-            });
-            tokensRemaining = updated.tokensBalance;
-          } catch {
-            // Metering failure shouldn't fail the response.
-          }
-        }
-
         send({
           type: "done",
-          summary: `Applied ${result.changes.length} file change(s).`,
+          summary: result.summary,
           tokensUsed,
           tokensRemaining,
-          signedIn: Boolean(user),
+          signedIn: true,
         });
       } catch (err) {
+        const message = request.signal.aborted
+          ? "Generation stopped because the client disconnected."
+          : err instanceof Error
+            ? err.message
+            : "Generation failed";
+        await persistRun(
+          project.id,
+          `Generation failed: ${message}`,
+          "ERROR",
+          await readProjectFiles(project.sandboxId!).catch(() => null),
+        ).catch(() => {});
         send({ type: "status", status: "failed" });
-        send({
-          type: "error",
-          message: err instanceof Error ? err.message : "Generation failed",
-        });
+        send({ type: "error", message });
       } finally {
-        controller.close();
+        clearInterval(heartbeat);
+        try {
+          controller.close();
+        } catch {}
       }
     },
   });

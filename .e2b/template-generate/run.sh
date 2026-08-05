@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-PORT="${PORT:-5173}"
+PORT="${PORT:-3000}"
 
 fuser -k "${PORT}/tcp" 2>/dev/null || true
 

@@ -8,17 +8,10 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /home/user/project
+RUN mkdir -p /home/user/project
 
-COPY my-app/ /home/user/project/
-RUN npm install
-
-COPY template-generate/run.sh /usr/local/bin/run-nextjs
-RUN chmod +x /usr/local/bin/run-nextjs
-
-ENV PORT=5173
-EXPOSE 5173
-
-CMD ["/usr/local/bin/run-nextjs"]`;
+ENV PORT=3000
+EXPOSE 3000`;
 
 export const template = Template({
   fileContextPath: decodeURIComponent(new URL("..", import.meta.url).pathname),

@@ -2,9 +2,9 @@ import { Template, defaultBuildLogger } from "e2b";
 import { template } from "./template";
 
 async function main() {
-  await Template.build(template, "nextjs-dev", {
+  await Template.build(template, "node-container", {
     cpuCount: 1,
-    memoryMB: 1024,
+    memoryMB: 2048,
     onBuildLogs: defaultBuildLogger(),
   });
 }

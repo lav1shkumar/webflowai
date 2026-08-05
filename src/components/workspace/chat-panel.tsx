@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import ReactMarkdown from "react-markdown";
 import {
   ArrowUp,
   Check,
@@ -194,6 +195,8 @@ function MessageBubble({ message }: { message: ChatMessage }) {
         {message.status && (
           <GenerationStatus
             status={message.status}
+            stage={message.stage}
+            stageMessage={message.stageMessage}
             fileCount={dedupe(message.files ?? []).length}
           />
         )}
@@ -213,9 +216,9 @@ function MessageBubble({ message }: { message: ChatMessage }) {
         )}
 
         {message.content && (
-          <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
-            {message.content}
-          </p>
+          <div className="space-y-2 text-sm leading-relaxed text-foreground/90 [&_a]:text-primary [&_a]:underline [&_code]:rounded [&_code]:bg-foreground/[0.06] [&_code]:px-1 [&_code]:py-0.5 [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold [&_li]:my-0.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-foreground/[0.06] [&_pre]:p-3 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_strong]:font-semibold [&_strong]:text-foreground [&_ul]:list-disc [&_ul]:pl-5">
+            <ReactMarkdown>{message.content}</ReactMarkdown>
+          </div>
         )}
 
         {(typeof message.tokens === "number" && message.tokens > 0) ||
@@ -242,32 +245,53 @@ function MessageBubble({ message }: { message: ChatMessage }) {
 
 function GenerationStatus({
   status,
+  stage,
+  stageMessage,
   fileCount,
 }: {
   status: NonNullable<ChatMessage["status"]>;
+  stage: ChatMessage["stage"];
+  stageMessage: ChatMessage["stageMessage"];
   fileCount: number;
 }) {
   const running = status === "running";
   const done = status === "done";
   const label = running
-    ? "Generating code"
+    ? stage === "context"
+      ? "Gathering context"
+      : stage === "planning"
+        ? "Planning"
+        : stage === "generation"
+          ? "Generating code"
+          : stage === "verification"
+            ? "Verifying changes"
+            : "Starting"
     : done
       ? "Code generated"
       : "Generation failed";
   const detail = running
-    ? "Working…"
+    ? stage === "context"
+      ? "Inspecting project files…"
+      : stage === "planning"
+        ? "Creating a plan…"
+        : stageMessage ??
+          (stage === "generation"
+            ? "Updating project files…"
+            : stage === "verification"
+              ? "Running project checks…"
+              : "Working…")
     : done && fileCount > 0
       ? `${fileCount} file${fileCount === 1 ? "" : "s"}`
       : done
         ? "Done"
-        : "Failed";
+        : stageMessage ?? "Something went wrong. Please try again.";
 
   return (
     <div className="rounded-xl border border-border bg-foreground/[0.02] p-3">
       <div className="flex gap-3">
         <span
           className={cn(
-            "relative flex h-[26px] w-[26px] items-center justify-center rounded-full border",
+            "relative flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full border",
             done && "border-transparent bg-primary text-primary-foreground",
             running && "border-primary/50 bg-primary/10 text-primary",
             status === "error" &&
@@ -291,7 +315,7 @@ function GenerationStatus({
           >
             {label}
           </div>
-          <div className="-mt-0.5 text-[11px] text-muted-foreground">
+          <div className="-mt-0.5 whitespace-pre-wrap text-[11px] text-muted-foreground">
             {detail}
           </div>
         </div>
