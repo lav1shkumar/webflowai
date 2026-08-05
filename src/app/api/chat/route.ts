@@ -95,7 +95,11 @@ export async function POST(request: Request) {
 
   const project = await prisma.project.findFirst({
     where: { id: projectId, ownerId: user.id },
-    select: { id: true, sandboxId: true },
+    select: {
+      id: true,
+      sandboxId: true,
+      files: { select: { path: true, content: true } },
+    },
   });
   if (!project) {
     return Response.json({ error: "project-not-found" }, { status: 404 });
@@ -142,8 +146,16 @@ export async function POST(request: Request) {
           signal: request.signal,
           onStage: (stage, message) =>
             send({ type: "stage", stage, message }),
+          onActivity: (activity) => send({ type: "activity", activity }),
+          onLog: (message) => send({ type: "log", message }),
         });
         const files = await readProjectFiles(project.sandboxId!);
+        const filesBefore = Object.fromEntries(
+          project.files.map((file) => [file.path, file.content]),
+        );
+        const changedFiles = [
+          ...new Set([...Object.keys(filesBefore), ...Object.keys(files)]),
+        ].filter((path) => filesBefore[path] !== files[path]);
 
         const tokensUsed = usageTokensForModelTokens(result.tokens);
         let tokensRemaining = user.tokensBalance;
@@ -170,6 +182,8 @@ export async function POST(request: Request) {
           tokensUsed,
           tokensRemaining,
           signedIn: true,
+          files: changedFiles,
+          previewUrl: result.previewUrl,
         });
       } catch (err) {
         const message = request.signal.aborted

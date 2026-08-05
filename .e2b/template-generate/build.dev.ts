@@ -3,7 +3,7 @@ import { template } from "./template";
 
 async function main() {
   await Template.build(template, "node-container", {
-    cpuCount: 1,
+    cpuCount: 2,
     memoryMB: 2048,
     onBuildLogs: defaultBuildLogger(),
   });

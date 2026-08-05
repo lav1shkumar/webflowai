@@ -63,6 +63,60 @@ export async function runCommand(
   }
 }
 
+export async function startPreview(
+  sandboxId: string,
+  command: string,
+  onOutput?: (data: string) => void,
+) {
+  const sandbox = await connectSandbox(sandboxId);
+  const output: string[] = [];
+  const capture = (data: string) => {
+    output.push(data);
+    onOutput?.(data);
+  };
+
+  await sandbox.commands.run(
+    "fuser -k 3000/tcp 2>/dev/null || pkill -f '[n]ext dev|[v]ite' || true",
+    { cwd: E2B_PROJECT_DIR },
+  );
+
+  const host = sandbox.getHost(E2B_PREVIEW_PORT);
+  const hostname = host.startsWith("http") ? new URL(host).hostname : host;
+  const url = host.startsWith("http") ? host : `https://${host}`;
+  const process = await sandbox.commands.run(command, {
+    cwd: E2B_PROJECT_DIR,
+    envs: {
+      PORT: String(E2B_PREVIEW_PORT),
+      HOST: "0.0.0.0",
+      HOSTNAME: "0.0.0.0",
+      __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: hostname,
+    },
+    background: true,
+    onStdout: capture,
+    onStderr: capture,
+  });
+
+  try {
+    await sandbox.commands.run(
+      `for i in $(seq 1 120); do curl -fsS http://127.0.0.1:${E2B_PREVIEW_PORT} >/dev/null && exit 0; kill -0 ${process.pid} 2>/dev/null || exit 1; sleep 0.5; done; exit 1`,
+      { timeoutMs: 65_000 },
+    );
+  } catch {
+    await process.kill().catch(() => false);
+    return {
+      ready: false as const,
+      output: output.join("").slice(-30_000),
+    };
+  }
+
+  await process.disconnect();
+  return {
+    ready: true as const,
+    url,
+    output: output.join("").slice(-30_000),
+  };
+}
+
 export async function readFiles(sandboxId: string, paths: string[]) {
   const sandbox = await connectSandbox(sandboxId);
   const files = await Promise.all(

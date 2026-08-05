@@ -5,7 +5,11 @@ import { buildFileTree, type FileNode } from "@/features/workspace/files";
 import { terminalBus } from "@/features/workspace/terminal-bus";
 import { getProjectState } from "@/server/projects";
 import { getTokens } from "@/server/tokens";
-import type { GenerationEvent } from "@/features/ai/types";
+import type {
+  GenerationActivity,
+  GenerationEvent,
+  GenerationStage,
+} from "@/features/ai/types";
 import { shortId } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
@@ -22,8 +26,9 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   status?: "running" | "done" | "error";
-  stage?: "context" | "planning" | "generation" | "verification";
+  stage?: GenerationStage;
   stageMessage?: string;
+  activities?: GenerationActivity[];
   files?: string[];
   tokens?: number;
   durationMs?: number;
@@ -137,6 +142,8 @@ interface ServerRunOutput {
   tokensUsed: number | null;
   tokensRemaining: number | null;
   signedIn: boolean;
+  files: string[];
+  previewUrl: string;
 }
 
 type PreviewEvent =
@@ -223,6 +230,8 @@ async function runViaServer(
     tokensUsed: null,
     tokensRemaining: null,
     signedIn: false,
+    files: [],
+    previewUrl: "",
   };
   let completed = false;
 
@@ -245,6 +254,8 @@ async function runViaServer(
       result.signedIn = event.signedIn;
       result.tokensUsed = event.tokensUsed;
       result.tokensRemaining = event.tokensRemaining;
+      result.files = event.files;
+      result.previewUrl = event.previewUrl;
       return;
     }
     onEvent(event);
@@ -262,6 +273,7 @@ async function runViaServer(
   }
   if (buffer) handleLine(buffer);
   if (!completed) throw new Error("generation-stream-ended");
+  if (!result.previewUrl) throw new Error("generation-preview-missing");
 
   return result;
 }
@@ -414,6 +426,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       content: "",
       status: "running",
       stage: "context",
+      activities: [],
       files: [],
       createdAt: Date.now(),
     };
@@ -430,6 +443,32 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           m.id === assistantId ? { ...m, ...patch } : m,
         ),
       }));
+    const updateActivity = (activity: GenerationActivity) =>
+      set((s) => ({
+        messages: s.messages.map((message) => {
+          if (message.id !== assistantId) return message;
+
+          const activities = [...(message.activities ?? [])];
+          const existing = activities.findIndex(
+            (item) => item.id === activity.id,
+          );
+          if (existing >= 0) activities[existing] = activity;
+          else activities.push(activity);
+
+          const files =
+            activity.kind === "file" &&
+            activity.path &&
+            activity.status === "done"
+              ? [...new Set([...(message.files ?? []), activity.path])]
+              : message.files;
+
+          return {
+            ...message,
+            activities: activities.slice(-50),
+            ...(files ? { files } : {}),
+          };
+        }),
+      }));
 
     const onEvent = (event: GenerationEvent) => {
       switch (event.type) {
@@ -444,22 +483,43 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           });
           break;
         case "stage":
+          if (event.stage === "preview") {
+            set({ serverStatus: "starting", previewUrl: null });
+          }
           updateAssistant({
             stage: event.stage,
             stageMessage: event.message,
           });
           break;
+        case "log":
+          if (event.message) terminalBus.write(event.message);
+          break;
+        case "activity":
+          updateActivity(event.activity);
+          break;
       }
     };
 
     const pkgBefore = get().files["package.json"] ?? "";
+    let previewStarted = false;
 
     try {
-      const { summary, tokensUsed, tokensRemaining, signedIn } =
+      const {
+        summary,
+        tokensUsed,
+        tokensRemaining,
+        signedIn,
+        files,
+        previewUrl,
+      } =
         await runViaServer({ projectId, prompt }, onEvent);
+
+      previewStarted = true;
+      set({ previewUrl, serverStatus: "ready" });
 
       updateAssistant({
         content: summary,
+        files,
         ...(tokensUsed != null ? { tokens: tokensUsed } : {}),
       });
 
@@ -493,6 +553,20 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         return;
       }
 
+      set((s) => ({
+        messages: s.messages.map((message) =>
+          message.id === assistantId
+            ? {
+                ...message,
+                activities: message.activities?.map((activity) =>
+                  activity.status === "running"
+                    ? { ...activity, status: "error" }
+                    : activity,
+                ),
+              }
+            : message,
+        ),
+      }));
       updateAssistant({
         content: "",
         status: "error",
@@ -509,12 +583,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
               ? serverErr.message
               : "Something went wrong. Please try again.",
       });
+      set({ serverStatus: "error", previewUrl: null });
     } finally {
       set({ isGenerating: false });
       updateAssistant({ durationMs: Date.now() - startedAt });
 
       const pkgAfter = get().files["package.json"] ?? "";
       if (
+        !previewStarted &&
         get().serverStatus === "ready" &&
         dependenciesChanged(pkgBefore, pkgAfter)
       ) {
