@@ -12,3 +12,5 @@ next-env.d.ts
 .vercel
 /.kiro
 /.vscode
+/.e2b
+/.pnpm-store
