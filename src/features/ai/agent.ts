@@ -112,7 +112,7 @@ After it succeeds, return a concise summary only of the code and user-visible pr
             },
           ],
         },
-        { signal: input.signal, recursionLimit: 40 },
+        { signal: input.signal, recursionLimit: 200 },
       );
       const responses = result.messages.filter(AIMessage.isInstance);
       return {
@@ -138,7 +138,7 @@ After it succeeds, return a concise summary only of the code and user-visible pr
             },
           ],
         },
-        { signal: input.signal, recursionLimit: 40 },
+        { signal: input.signal, recursionLimit: 200 },
       );
       const responses = result.messages.filter(AIMessage.isInstance);
       if (!getPreviewUrl()) {

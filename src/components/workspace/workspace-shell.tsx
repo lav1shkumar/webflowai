@@ -2,11 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import {
-  Panel,
-  PanelGroup,
-  PanelResizeHandle,
-} from "react-resizable-panels";
+import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { Code2, Eye, Play, Download, ChevronLeft } from "lucide-react";
 import { useWorkspace } from "@/features/workspace/store";
 import { WorkspaceRail } from "@/components/workspace/rail";
@@ -32,9 +28,7 @@ function ResizeHandle({ vertical }: { vertical?: boolean }) {
       <div
         className={cn(
           "absolute z-10",
-          vertical
-            ? "inset-x-0 -top-1 h-2"
-            : "inset-y-0 -left-1 w-2",
+          vertical ? "inset-x-0 -top-1 h-2" : "inset-y-0 -left-1 w-2",
         )}
       />
     </PanelResizeHandle>
@@ -79,10 +73,10 @@ export function WorkspaceShell({ projectId }: { projectId: string }) {
               <ChevronLeft className="h-4 w-4" />
             </Link>
           </Button>
-          <span className="text-sm font-medium">Untitled project</span>
-          <span className="rounded-md bg-foreground/[0.04] px-2 py-0.5 text-[11px] text-muted-foreground">
+          {/* <span className="text-sm font-medium">Untitled project</span> */}
+          {/* <span className="rounded-md bg-foreground/[0.04] px-2 py-0.5 text-[11px] text-muted-foreground">
             {projectId.slice(0, 12)}
-          </span>
+          </span> */}
 
           <div className="ml-auto flex items-center gap-2">
             <ThemeToggle />
@@ -142,7 +136,12 @@ export function WorkspaceShell({ projectId }: { projectId: string }) {
         <PanelGroup direction="horizontal" className="flex-1">
           {showFiles && (
             <>
-              <Panel defaultSize={16} minSize={12} maxSize={28} className="bg-card/20">
+              <Panel
+                defaultSize={16}
+                minSize={12}
+                maxSize={28}
+                className="bg-card/20"
+              >
                 <FileExplorer />
               </Panel>
               <ResizeHandle />
