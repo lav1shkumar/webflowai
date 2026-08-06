@@ -9,7 +9,7 @@ const url = process.env.DATABASE_URL;
 // AWS RDS global CA bundle, committed at the project root. Verifying against it
 // lets us keep certificate validation on instead of `rejectUnauthorized: false`.
 
-const ca = readFileSync(join(process.cwd(), "global-bundle.pem"), "utf8");
+// const ca = readFileSync(join(process.cwd(), "global-bundle.pem"), "utf8");
 
 const adapter = new PrismaPg({
   connectionString: url,
@@ -17,7 +17,7 @@ const adapter = new PrismaPg({
   //   ca,
   //   rejectUnauthorized: true,
   // },
-  // connectionTimeoutMillis: 10_000,
+  connectionTimeoutMillis: 10_000,
 });
 
 const global = globalThis as unknown as { prisma?: PrismaClient };
