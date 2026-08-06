@@ -2,7 +2,12 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import {
+  Panel,
+  PanelGroup,
+  PanelResizeHandle,
+  type ImperativePanelHandle,
+} from "react-resizable-panels";
 import { Code2, Eye, Play, Download, ChevronLeft } from "lucide-react";
 import { useWorkspace } from "@/features/workspace/store";
 import { WorkspaceRail } from "@/components/workspace/rail";
@@ -42,6 +47,12 @@ export function WorkspaceShell({ projectId }: { projectId: string }) {
   const serverStatus = useWorkspace((s) => s.serverStatus);
   const files = useWorkspace((s) => s.files);
   const isGenerating = useWorkspace((s) => s.isGenerating);
+  const terminalPanel = React.useRef<ImperativePanelHandle>(null);
+
+  React.useEffect(() => {
+    if (view === "preview") terminalPanel.current?.collapse();
+    else terminalPanel.current?.expand();
+  }, [view]);
 
   const fileCount = Object.keys(files).length;
 
@@ -134,7 +145,7 @@ export function WorkspaceShell({ projectId }: { projectId: string }) {
 
         {/* Panels */}
         <PanelGroup direction="horizontal" className="flex-1">
-          {showFiles && (
+          {showFiles && view === "editor" && (
             <>
               <Panel
                 defaultSize={16}
@@ -148,12 +159,12 @@ export function WorkspaceShell({ projectId }: { projectId: string }) {
             </>
           )}
 
-          <Panel defaultSize={30} minSize={22}>
+          <Panel defaultSize={24} minSize={22}>
             <ChatPanel />
           </Panel>
           <ResizeHandle />
 
-          <Panel defaultSize={54} minSize={30}>
+          <Panel defaultSize={60} minSize={30}>
             <PanelGroup direction="vertical">
               <Panel defaultSize={70} minSize={30}>
                 <div className="h-full" hidden={view !== "editor"}>
@@ -164,7 +175,12 @@ export function WorkspaceShell({ projectId }: { projectId: string }) {
                 </div>
               </Panel>
               <ResizeHandle vertical />
-              <Panel defaultSize={30} minSize={12}>
+              <Panel
+                ref={terminalPanel}
+                collapsible
+                defaultSize={30}
+                minSize={12}
+              >
                 <TerminalPanel />
               </Panel>
             </PanelGroup>
