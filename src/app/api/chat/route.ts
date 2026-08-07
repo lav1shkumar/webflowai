@@ -99,6 +99,12 @@ export async function POST(request: Request) {
       id: true,
       sandboxId: true,
       files: { select: { path: true, content: true } },
+      messages: {
+        where: { role: { in: ["USER", "ASSISTANT"] } },
+        orderBy: { createdAt: "desc" },
+        take: 12,
+        select: { role: true, content: true },
+      },
     },
   });
   if (!project) {
@@ -107,6 +113,11 @@ export async function POST(request: Request) {
   if (!project.sandboxId) {
     return Response.json({ error: "sandbox-not-ready" }, { status: 409 });
   }
+
+  const history = project.messages.reverse().map((message) => ({
+    role: message.role === "USER" ? ("user" as const) : ("assistant" as const),
+    content: message.content.slice(0, 1500),
+  }));
 
   await prisma.$transaction([
     prisma.project.update({
@@ -142,6 +153,7 @@ export async function POST(request: Request) {
 
         const result = await runCodingAgent({
           prompt,
+          history,
           sandboxId: project.sandboxId!,
           signal: request.signal,
           onStage: (stage, message) =>

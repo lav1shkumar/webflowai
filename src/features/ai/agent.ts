@@ -7,6 +7,7 @@ import type { FileChange, GenerationActivity, GenerationStage } from "./types";
 
 export interface AgentRunInput {
   prompt: string;
+  history?: { role: "user" | "assistant"; content: string }[];
   sandboxId: string;
   signal?: AbortSignal;
   onFileChange?: (change: FileChange) => void;
@@ -80,6 +81,7 @@ After it succeeds, return a concise summary only of the code and user-visible pr
       const result = await contextAgent.invoke(
         {
           messages: [
+            ...(input.history ?? []),
             {
               role: "user",
               content: `Gather repository context for this request:\n${input.prompt}`,
@@ -106,6 +108,7 @@ After it succeeds, return a concise summary only of the code and user-visible pr
       const result = await agent.invoke(
         {
           messages: [
+            ...(input.history ?? []),
             {
               role: "user",
               content: `REQUEST:\n${input.prompt}\n\nGATHERED REPOSITORY CONTEXT:\n${state.context}`,
