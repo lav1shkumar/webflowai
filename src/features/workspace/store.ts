@@ -713,6 +713,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   bootPreview: async () => {
+    set({ serverStatus: "installing", previewUrl: null });
     let sandboxId = get().sandboxId;
     const projectId = get().projectId;
     if (!sandboxId && projectId) {
@@ -745,7 +746,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       return;
     }
 
-    set({ serverStatus: "installing", previewUrl: null });
     try {
       const onEvent = (event: PreviewEvent) => {
         if (event.type === "status") set({ serverStatus: event.status });
