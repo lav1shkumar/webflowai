@@ -19,7 +19,7 @@ export async function createSandbox(projectId: string, ownerId: string) {
 
   const sandbox = await Sandbox.create(process.env.E2B_TEMPLATE || "base", {
     metadata: { webflowaiProjectId: projectId, webflowaiOwnerId: ownerId },
-    lifecycle: { onTimeout: "kill" },
+    lifecycle: { onTimeout: "pause" },
     timeoutMs: 15 * 60 * 1000,
   });
   await sandbox.files.makeDir(E2B_PROJECT_DIR);
