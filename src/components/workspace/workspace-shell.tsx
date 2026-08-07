@@ -148,9 +148,10 @@ export function WorkspaceShell({ projectId }: { projectId: string }) {
           {showFiles && view === "editor" && (
             <>
               <Panel
+                order={1}
                 defaultSize={16}
                 minSize={12}
-                maxSize={28}
+                maxSize={25}
                 className="bg-card/20"
               >
                 <FileExplorer />
@@ -159,12 +160,12 @@ export function WorkspaceShell({ projectId }: { projectId: string }) {
             </>
           )}
 
-          <Panel defaultSize={24} minSize={22}>
+          <Panel order={2} defaultSize={24} minSize={22}>
             <ChatPanel />
           </Panel>
           <ResizeHandle />
 
-          <Panel defaultSize={60} minSize={30}>
+          <Panel order={3} defaultSize={60} minSize={30}>
             <PanelGroup direction="vertical">
               <Panel defaultSize={70} minSize={30}>
                 <div className="h-full" hidden={view !== "editor"}>
