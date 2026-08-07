@@ -1,4 +1,5 @@
 import { tool } from "langchain";
+import * as prettier from "prettier";
 import { z } from "zod";
 import {
   listProjectFiles,
@@ -18,6 +19,17 @@ const pathSchema = z.string().min(1).refine(
   (path) => !path.startsWith("/") && !path.split("/").includes(".."),
   "Use a workspace-relative path.",
 );
+
+// Models sometimes emit minified source (whole stylesheets on one line), which
+// is unreadable in the editor. Falls back to the original text when prettier
+// can't infer a parser or the content doesn't parse.
+async function formatSource(path: string, content: string) {
+  try {
+    return await prettier.format(content, { filepath: path });
+  } catch {
+    return content;
+  }
+}
 
 export function createAgentTools(
   sandboxId: string,
@@ -149,8 +161,9 @@ export function createAgentTools(
                 "generation",
                 `${op === "create" ? "Creating" : "Updating"} ${path}…`,
               );
-              await writeFiles(sandboxId, { [path]: content });
-              const change = { path, content, op };
+              const formatted = await formatSource(path, content);
+              await writeFiles(sandboxId, { [path]: formatted });
+              const change = { path, content: formatted, op };
               record(change);
               return `${op === "create" ? "Created" : "Updated"} ${path}`;
             },

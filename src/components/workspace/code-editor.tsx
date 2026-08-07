@@ -56,6 +56,17 @@ const configureMonaco: BeforeMount = (monaco) => {
     });
   }
 
+  // Generated projects use Tailwind, whose at-rules (@theme, @apply,
+  // @custom-variant, @plugin) are not standard CSS, so Monaco's validator
+  // marks every one as an unknown rule.
+  monaco.languages.css.cssDefaults.setOptions({
+    ...monaco.languages.css.cssDefaults.options,
+    lint: {
+      ...monaco.languages.css.cssDefaults.options.lint,
+      unknownAtRules: "ignore",
+    },
+  });
+
   monaco.editor.defineTheme(DARK_THEME, {
     base: "vs-dark",
     inherit: true,
