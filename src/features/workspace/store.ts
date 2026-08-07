@@ -113,26 +113,6 @@ function cancelSandboxWrite(path: string) {
   sandboxSyncTimers.delete(path);
 }
 
-function depsSignature(pkg: string): string {
-  try {
-    const parsed = JSON.parse(pkg) as {
-      dependencies?: Record<string, string>;
-      devDependencies?: Record<string, string>;
-    };
-    return JSON.stringify({
-      dependencies: parsed.dependencies ?? {},
-      devDependencies: parsed.devDependencies ?? {},
-    });
-  } catch {
-    return pkg;
-  }
-}
-
-function dependenciesChanged(before: string, after: string): boolean {
-  if (!after) return false;
-  return depsSignature(before) !== depsSignature(after);
-}
-
 // ---------------------------------------------------------------------------
 // Server generation stream
 // ---------------------------------------------------------------------------
@@ -500,9 +480,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       }
     };
 
-    const pkgBefore = get().files["package.json"] ?? "";
-    let previewStarted = false;
-
     try {
       const {
         summary,
@@ -514,7 +491,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       } =
         await runViaServer({ projectId, prompt }, onEvent);
 
-      previewStarted = true;
       set({ previewUrl, serverStatus: "ready" });
 
       updateAssistant({
@@ -587,17 +563,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     } finally {
       set({ isGenerating: false });
       updateAssistant({ durationMs: Date.now() - startedAt });
-
-      const pkgAfter = get().files["package.json"] ?? "";
-      if (
-        !previewStarted &&
-        get().serverStatus === "ready" &&
-        dependenciesChanged(pkgBefore, pkgAfter)
-      ) {
-        terminalBus.writeLine("\u001b[36m[preview] Dependencies changed — restarting…\u001b[0m");
-        void get().restartPreview();
-      }
-
     }
   },
 

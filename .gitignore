@@ -14,3 +14,5 @@ next-env.d.ts
 /.vscode
 /.e2b
 /.pnpm-store
+/AGENTS.md
+/Claude.md

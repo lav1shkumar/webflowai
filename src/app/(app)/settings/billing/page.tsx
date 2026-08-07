@@ -138,7 +138,9 @@ export default function BillingSettingsPage() {
             )}
           >
             {pack.highlight && (
-              <Badge className="absolute -top-2.5 right-4">Most popular</Badge>
+              <Badge className="absolute -top-2.5 right-4 bg-primary text-primary-foreground shadow-sm ring-1 ring-inset ring-white/10">
+                Most popular
+              </Badge>
             )}
             <h4 className="font-semibold">{pack.name}</h4>
             <p className="mt-1 text-xs text-muted-foreground">{pack.tagline}</p>

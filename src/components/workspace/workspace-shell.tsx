@@ -42,7 +42,7 @@ function ResizeHandle({ vertical }: { vertical?: boolean }) {
 
 export function WorkspaceShell({ projectId }: { projectId: string }) {
   const [showFiles, setShowFiles] = React.useState(true);
-  const [view, setView] = React.useState<"editor" | "preview">("editor");
+  const [view, setView] = React.useState<"editor" | "preview">("preview");
   const bootPreview = useWorkspace((s) => s.bootPreview);
   const serverStatus = useWorkspace((s) => s.serverStatus);
   const files = useWorkspace((s) => s.files);
