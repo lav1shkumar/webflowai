@@ -19,7 +19,7 @@ const testimonials = [
   },
   {
     quote:
-      "The multi-agent reviewer caught type errors before I even opened the editor. Wild.",
+      "The project-aware edits changed exactly the files I expected. Wild.",
     name: "Ananya Rao",
     role: "Eng Lead, Fintech",
     initials: "AR",

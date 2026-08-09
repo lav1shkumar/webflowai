@@ -104,10 +104,6 @@
     @apply backdrop-blur-2xl;
   }
 
-  /* Display text — solid, high-contrast. */
-  .text-gradient {
-    @apply text-foreground;
-  }
   /* Accent keyword highlight — uses primary (rich gold in light, cream in dark). */
   .text-gradient-brand {
     color: hsl(var(--primary));

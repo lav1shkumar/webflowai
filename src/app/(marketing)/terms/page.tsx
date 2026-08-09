@@ -54,12 +54,12 @@ export default function TermsPage() {
 
         <section>
           <h2 className="text-lg font-semibold text-foreground">
-            5. Credits and Billing
+            5. Tokens and Billing
           </h2>
           <p className="mt-2">
-            Paid plans are billed through Razorpay. Credits are non-refundable
-            once used. Unused credits do not roll over between billing cycles
-            unless stated otherwise in your plan.
+            Token packs are one-time purchases billed through Razorpay. Tokens
+            are non-refundable once used, do not expire, and are not a
+            subscription.
           </p>
         </section>
 
@@ -70,7 +70,7 @@ export default function TermsPage() {
           <p className="mt-2">You agree not to:</p>
           <ul className="mt-2 list-disc space-y-1 pl-5">
             <li>Use the service to generate malicious or harmful code</li>
-            <li>Attempt to bypass credit limits or abuse the AI pipeline</li>
+            <li>Attempt to bypass token limits or abuse the AI pipeline</li>
             <li>Reverse-engineer or scrape the service</li>
             <li>Violate any applicable laws</li>
           </ul>

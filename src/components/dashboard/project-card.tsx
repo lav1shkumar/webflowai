@@ -9,7 +9,6 @@ export interface ProjectCardData {
   name: string;
   description: string;
   status: string;
-  framework: string;
   updatedAt: string;
   gradient: string;
 }
@@ -71,12 +70,7 @@ export function ProjectCard({
             {project.description}
           </p>
           <div className="mt-4 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-            <div className="flex min-w-0 items-center gap-2">
-              <StatusBadge status={project.status} />
-              <span className="truncate rounded-md bg-foreground/[0.04] px-2 py-0.5 capitalize">
-                {project.framework}
-              </span>
-            </div>
+            <StatusBadge status={project.status} />
             <span className="shrink-0">{timeAgo(project.updatedAt)}</span>
           </div>
         </div>
@@ -121,9 +115,6 @@ export function ProjectCard({
           {project.description}
         </p>
         <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
-          <span className="rounded-md bg-foreground/[0.04] px-2 py-0.5 capitalize">
-            {project.framework}
-          </span>
           <span>{timeAgo(project.updatedAt)}</span>
         </div>
       </div>

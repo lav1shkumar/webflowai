@@ -24,7 +24,7 @@ export function AppTopbar({ title }: { title?: string }) {
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b border-border bg-background/70 px-6 backdrop-blur-xl">
       <div className="flex items-center gap-3">
-        {title && <h1 className="text-lg font-semibold">{title}</h1>} 
+        {title && <h1 className="text-lg font-semibold">{title}</h1>}
       </div>
 
       <div className="flex items-center gap-2">
@@ -53,7 +53,7 @@ export function AppTopbar({ title }: { title?: string }) {
               </Avatar>
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-60">
+          <DropdownMenuContent align="end" className="w-55">
             <DropdownMenuLabel>
               <div className="flex items-center gap-3 py-1">
                 <Avatar className="h-9 w-9">
@@ -73,7 +73,9 @@ export function AppTopbar({ title }: { title?: string }) {
               </div>
             </DropdownMenuLabel>
             <div className="px-2.5 pb-1.5">
-              <Badge variant="default">{viewer.plan} plan</Badge>
+              <Badge variant="default">
+                {viewer.tokensBalance.toLocaleString()} tokens
+              </Badge>
             </div>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>

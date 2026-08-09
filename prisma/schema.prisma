@@ -28,15 +28,13 @@ model User {
   onboarded     Boolean @default(false)
   primaryUseCase String?
 
-  // AI credit accounting (denormalized for fast reads)
-  creditsBalance Int @default(200)
-  creditsMonthly Int @default(200)
+  tokensBalance Int @default(200)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   projects      Project[]
-  subscription  Subscription?
+  payments      Payment[]
   messages      Message[]
 
   @@index([clerkId])
@@ -62,6 +60,7 @@ model Project {
   templateId  String?
   prompt      String? // original generation prompt
   thumbnail   String?
+  sandboxId   String?       @unique
 
   ownerId String
   owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
@@ -134,62 +133,20 @@ enum MessageRole {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Billing (Razorpay)
+// Token purchases (Razorpay)
 // ─────────────────────────────────────────────────────────────
 
-model Subscription {
+model Payment {
   id     String @id @default(cuid())
-  userId String @unique
+  userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  plan         Plan               @default(FREE)
-  status       SubscriptionStatus @default(ACTIVE)
-  billingCycle BillingCycle       @default(MONTHLY)
-
-  razorpayCustomerId     String?
-  razorpaySubscriptionId String? @unique
-
-  currentPeriodStart DateTime?
-  currentPeriodEnd   DateTime?
-  cancelAtPeriodEnd  Boolean   @default(false)
-
-  payments Payment[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([userId])
-  @@index([status])
-}
-
-enum Plan {
-  FREE
-  PRO
-  TEAM
-}
-
-enum SubscriptionStatus {
-  ACTIVE
-  PAST_DUE
-  CANCELED
-  PAUSED
-  TRIALING
-}
-
-enum BillingCycle {
-  MONTHLY
-  ANNUAL
-}
-
-model Payment {
-  id             String        @id @default(cuid())
-  subscriptionId String
-  subscription   Subscription  @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
-
-  amount   Int // in paise
+  packId   String
+  tokens   Int
+  amount   Int           // in paise
   currency String        @default("INR")
   status   PaymentStatus @default(CREATED)
-  method   String? // upi, card, netbanking
+  method   String?       // upi, card, netbanking
 
   razorpayPaymentId String? @unique
   razorpayOrderId   String?
@@ -197,7 +154,8 @@ model Payment {
 
   createdAt DateTime @default(now())
 
-  @@index([subscriptionId, createdAt])
+  @@index([userId, createdAt])
+  @@index([razorpayOrderId])
 }
 
 enum PaymentStatus {
@@ -207,5 +165,3 @@ enum PaymentStatus {
   REFUNDED
   FAILED
 }
-
-

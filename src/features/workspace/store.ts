@@ -1,43 +1,50 @@
 "use client";
 
 import { create } from "zustand";
-import { webContainerService, type ServerStatus } from "@/features/webcontainer/service";
-import { buildFileTree, type FileNode } from "@/features/webcontainer/files";
+import { buildFileTree, type FileNode } from "@/features/workspace/files";
 import { terminalBus } from "@/features/workspace/terminal-bus";
-import { getProjectState, saveProjectState } from "@/server/projects";
-import { getCredits } from "@/server/credits";
-import type { AgentEvent, AgentKind } from "@/features/ai/types";
+import { getProjectState } from "@/server/projects";
+import { getTokens } from "@/server/tokens";
+import type {
+  GenerationActivity,
+  GenerationEvent,
+  GenerationStage,
+} from "@/features/ai/types";
 import { shortId } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export interface CreditsState {
+export interface TokensState {
   signedIn: boolean;
   balance: number;
-  monthly: number;
-}
-
-export interface ChatStep {
-  agent: AgentKind;
-  label: string;
-  status: "running" | "done" | "error";
 }
 
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
-  steps?: ChatStep[];
+  status?: "running" | "done" | "error";
+  stage?: GenerationStage;
+  stageMessage?: string;
+  activities?: GenerationActivity[];
   files?: string[];
-  credits?: number;
+  tokens?: number;
   durationMs?: number;
   createdAt: number;
 }
 
+export type ServerStatus =
+  | "idle"
+  | "installing"
+  | "starting"
+  | "ready"
+  | "error";
+
 interface WorkspaceState {
   projectId: string | null;
+  sandboxId: string | null;
   files: Record<string, string>;
   tree: FileNode[];
   activeFilePath: string | null;
@@ -45,7 +52,7 @@ interface WorkspaceState {
   serverStatus: ServerStatus;
   previewUrl: string | null;
   isGenerating: boolean;
-  credits: CreditsState | null;
+  tokens: TokensState | null;
 
   // lifecycle
   init: (projectId: string, initialPrompt?: string) => void;
@@ -70,74 +77,115 @@ interface WorkspaceState {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const AGENT_LABELS: Record<AgentKind, string> = {
-  generator: "Generating code",
-};
+const sandboxSyncTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-function rebuildTree(files: Record<string, string>): FileNode[] {
-  return buildFileTree(files);
+async function patchSandbox(sandboxId: string, body: unknown) {
+  const response = await fetch(`/api/sandboxes/${sandboxId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(`Sandbox sync failed (${response.status})`);
 }
 
-const containerSyncTimers = new Map<string, ReturnType<typeof setTimeout>>();
-function scheduleContainerSync(path: string, content: string): void {
-  if (!webContainerService.isMounted) return;
-  const existing = containerSyncTimers.get(path);
+function scheduleSandboxWrite(
+  sandboxId: string,
+  path: string,
+  content: string,
+) {
+  const existing = sandboxSyncTimers.get(path);
   if (existing) clearTimeout(existing);
-  containerSyncTimers.set(
+  sandboxSyncTimers.set(
     path,
     setTimeout(() => {
-      containerSyncTimers.delete(path);
-      void webContainerService.syncFile(path, content);
+      sandboxSyncTimers.delete(path);
+      void patchSandbox(sandboxId, {
+        action: "writeFiles",
+        files: { [path]: content },
+      }).catch(() => {});
     }, 200),
   );
 }
 
-function depsSignature(pkg: string): string {
-  try {
-    const parsed = JSON.parse(pkg) as {
-      dependencies?: Record<string, string>;
-      devDependencies?: Record<string, string>;
-    };
-    return JSON.stringify({
-      dependencies: parsed.dependencies ?? {},
-      devDependencies: parsed.devDependencies ?? {},
-    });
-  } catch {
-    return pkg;
-  }
-}
-
-function dependenciesChanged(before: string, after: string): boolean {
-  if (!after) return false;
-  return depsSignature(before) !== depsSignature(after);
+function cancelSandboxWrite(path: string) {
+  const timer = sandboxSyncTimers.get(path);
+  if (timer) clearTimeout(timer);
+  sandboxSyncTimers.delete(path);
 }
 
 // ---------------------------------------------------------------------------
 // Server generation stream
 // ---------------------------------------------------------------------------
 
-const AGENT_EVENT_TYPES = new Set([
-  "phase", "log", "token", "file", "plan", "blueprint",
-  "review", "verification", "tool", "error",
-]);
-
 interface ServerRunOutput {
-  summary: string | null;
-  fileCount: number;
-  ok: boolean;
-  creditsUsed: number | null;
-  creditsRemaining: number | null;
+  summary: string;
+  tokensUsed: number | null;
+  tokensRemaining: number | null;
   signedIn: boolean;
+  files: string[];
+  previewUrl: string;
+}
+
+type PreviewEvent =
+  | { type: "status"; status: ServerStatus }
+  | { type: "log"; data: string }
+  | { type: "ready"; url: string }
+  | {
+      type: "error";
+      message: string;
+      code?: "sandbox-not-found";
+    };
+
+async function streamPreview(
+  sandboxId: string,
+  onEvent: (event: PreviewEvent) => void,
+) {
+  const response = await fetch(`/api/sandboxes/${sandboxId}/preview`, {
+    method: "POST",
+  });
+  if (!response.ok || !response.body) {
+    throw new Error(`Preview request failed (${response.status})`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let ready = false;
+
+  const handleLine = (line: string) => {
+    if (!line.trim()) return;
+    const event = JSON.parse(line) as PreviewEvent;
+    if (event.type === "error") {
+      const error = new Error(event.message);
+      if (event.code === "sandbox-not-found") {
+        error.name = "SandboxNotFoundError";
+      }
+      throw error;
+    }
+    if (event.type === "ready") ready = true;
+    onEvent(event);
+  };
+
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let newline: number;
+    while ((newline = buffer.indexOf("\n")) >= 0) {
+      handleLine(buffer.slice(0, newline));
+      buffer = buffer.slice(newline + 1);
+    }
+  }
+  if (buffer) handleLine(buffer);
+  if (!ready) throw new Error("Preview stream ended before the server was ready");
 }
 
 async function runViaServer(
   input: {
     projectId: string;
     prompt: string;
-    files: Record<string, string>;
-    history: { role: "user" | "assistant"; content: string }[];
   },
-  onEvent: (event: AgentEvent) => void,
+  onEvent: (event: GenerationEvent) => void,
 ): Promise<ServerRunOutput> {
   const res = await fetch("/api/chat", {
     method: "POST",
@@ -147,7 +195,7 @@ async function runViaServer(
 
   if (res.status === 402) {
     const data = (await res.json().catch(() => ({}))) as { balance?: number };
-    throw new InsufficientCreditsError(Number(data.balance ?? 0));
+    throw new InsufficientTokensError(Number(data.balance ?? 0));
   }
 
   if (!res.ok || !res.body) {
@@ -158,42 +206,39 @@ async function runViaServer(
   const decoder = new TextDecoder();
   let buffer = "";
   const result: ServerRunOutput = {
-    summary: null,
-    fileCount: 0,
-    ok: false,
-    creditsUsed: null,
-    creditsRemaining: null,
+    summary: "Generation completed.",
+    tokensUsed: null,
+    tokensRemaining: null,
     signedIn: false,
+    files: [],
+    previewUrl: "",
   };
+  let completed = false;
 
   const handleLine = (line: string) => {
     const trimmed = line.trim();
     if (!trimmed) return;
-    let evt: Record<string, unknown>;
+    let event: GenerationEvent;
     try {
-      evt = JSON.parse(trimmed) as Record<string, unknown>;
+      event = JSON.parse(trimmed) as GenerationEvent;
     } catch {
       return;
     }
 
-    if (evt.type === "fatal") {
-      throw new Error(String(evt.message ?? "Generation failed"));
+    if (event.type === "error") {
+      throw new Error(event.message);
     }
-    if (evt.type === "done") {
-      result.ok = Boolean(evt.ok);
-      result.fileCount = Number(evt.fileCount ?? 0);
-      result.signedIn = Boolean(evt.signedIn);
-      result.creditsUsed = evt.creditsUsed != null ? Number(evt.creditsUsed) : null;
-      result.creditsRemaining = evt.creditsRemaining != null ? Number(evt.creditsRemaining) : null;
+    if (event.type === "done") {
+      completed = true;
+      result.summary = event.summary;
+      result.signedIn = event.signedIn;
+      result.tokensUsed = event.tokensUsed;
+      result.tokensRemaining = event.tokensRemaining;
+      result.files = event.files;
+      result.previewUrl = event.previewUrl;
       return;
     }
-    if (evt.type === "review") {
-      const review = evt.review as { summary?: string } | undefined;
-      if (review?.summary) result.summary = review.summary;
-    }
-    if (typeof evt.type === "string" && AGENT_EVENT_TYPES.has(evt.type)) {
-      onEvent(evt as unknown as AgentEvent);
-    }
+    onEvent(event);
   };
 
   for (;;) {
@@ -207,15 +252,17 @@ async function runViaServer(
     }
   }
   if (buffer) handleLine(buffer);
+  if (!completed) throw new Error("generation-stream-ended");
+  if (!result.previewUrl) throw new Error("generation-preview-missing");
 
   return result;
 }
 
-class InsufficientCreditsError extends Error {
+class InsufficientTokensError extends Error {
   balance: number;
   constructor(balance: number) {
-    super("insufficient-credits");
-    this.name = "InsufficientCreditsError";
+    super("insufficient-tokens");
+    this.name = "InsufficientTokensError";
     this.balance = balance;
   }
 }
@@ -229,6 +276,7 @@ const seededProjects = new Set<string>();
 
 export const useWorkspace = create<WorkspaceState>((set, get) => ({
   projectId: null,
+  sandboxId: null,
   files: {},
   tree: [],
   activeFilePath: null,
@@ -236,14 +284,18 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   serverStatus: "idle",
   previewUrl: null,
   isGenerating: false,
-  credits: null,
+  tokens: null,
 
   init: (projectId, initialPrompt) => {
     // Already on this project — nothing to do.
     if (get().projectId === projectId) return;
 
+    for (const timer of sandboxSyncTimers.values()) clearTimeout(timer);
+    sandboxSyncTimers.clear();
+
     set({
       projectId,
+      sandboxId: null,
       files: {},
       tree: [],
       activeFilePath: null,
@@ -255,17 +307,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     terminalBus.clear();
     terminalBus.writeLine("\u001b[2mWelcome to the WebFlowAI workspace.\u001b[0m");
 
-    webContainerService.setCallbacks({
-      onStatus: (serverStatus) => set({ serverStatus }),
-      onOutput: (chunk) => terminalBus.write(chunk),
-      onServerReady: (url) => set({ previewUrl: url, serverStatus: "ready" }),
-      onError: (message) => terminalBus.writeLine(`\u001b[31m${message}\u001b[0m`),
-    });
-
-    // Load credits.
     void (async () => {
       try {
-        set({ credits: await getCredits() });
+        set({ tokens: await getTokens() });
       } catch { /* unavailable */ }
     })();
 
@@ -276,7 +320,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         if (state && get().projectId === projectId) {
           set({
             files: state.files,
-            tree: rebuildTree(state.files),
+            tree: buildFileTree(state.files),
             messages: state.messages.map((m) => ({
               id: m.id,
               role: m.role,
@@ -285,6 +329,45 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
             })),
             activeFilePath: Object.keys(state.files)[0] ?? null,
           });
+
+          try {
+            let response = state.sandboxId
+              ? await fetch(`/api/sandboxes/${state.sandboxId}`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ action: "reconnect" }),
+                })
+              : await fetch("/api/sandboxes", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ projectId }),
+                });
+
+            if (response.status === 410 && state.sandboxId) {
+              response = await fetch(`/api/sandboxes/${state.sandboxId}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "restart" }),
+              });
+            }
+
+            if (response.ok) {
+              const data = (await response.json()) as {
+                sandboxId: string;
+                files?: Record<string, string>;
+              };
+              if (get().projectId === projectId) {
+                const files = data.files ?? get().files;
+                set({
+                  sandboxId: data.sandboxId,
+                  files,
+                  tree: buildFileTree(files),
+                  activeFilePath:
+                    get().activeFilePath ?? Object.keys(files)[0] ?? null,
+                });
+              }
+            }
+          } catch { /* sandbox unavailable */ }
         }
       } catch { /* run in-memory */ }
 
@@ -305,8 +388,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const projectId = get().projectId;
     if (!projectId || get().isGenerating) return;
 
-    const credits = get().credits;
-    if (credits?.signedIn && credits.balance <= 0) {
+    const tokens = get().tokens;
+    if (tokens?.signedIn && tokens.balance <= 0) {
       return;
     }
 
@@ -321,7 +404,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       id: assistantId,
       role: "assistant",
       content: "",
-      steps: [],
+      status: "running",
+      stage: "context",
+      activities: [],
       files: [],
       createdAt: Date.now(),
     };
@@ -332,149 +417,152 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }));
 
     const startedAt = Date.now();
-
     const updateAssistant = (patch: Partial<ChatMessage>) =>
       set((s) => ({
         messages: s.messages.map((m) =>
           m.id === assistantId ? { ...m, ...patch } : m,
         ),
       }));
-
-    const upsertStep = (agent: AgentKind, status: ChatStep["status"]) => {
+    const updateActivity = (activity: GenerationActivity) =>
       set((s) => ({
-        messages: s.messages.map((m) => {
-          if (m.id !== assistantId) return m;
-          const steps = [...(m.steps ?? [])];
-          const idx = steps.findIndex((st) => st.agent === agent);
-          const next: ChatStep = { agent, label: AGENT_LABELS[agent], status };
-          if (idx >= 0) steps[idx] = next;
-          else steps.push(next);
-          return { ...m, steps };
+        messages: s.messages.map((message) => {
+          if (message.id !== assistantId) return message;
+
+          const activities = [...(message.activities ?? [])];
+          const existing = activities.findIndex(
+            (item) => item.id === activity.id,
+          );
+          if (existing >= 0) activities[existing] = activity;
+          else activities.push(activity);
+
+          const files =
+            activity.kind === "file" &&
+            activity.path &&
+            activity.status === "done"
+              ? [...new Set([...(message.files ?? []), activity.path])]
+              : message.files;
+
+          return {
+            ...message,
+            activities: activities.slice(-50),
+            ...(files ? { files } : {}),
+          };
         }),
       }));
-    };
 
-    const onEvent = (event: AgentEvent) => {
+    const onEvent = (event: GenerationEvent) => {
       switch (event.type) {
-        case "phase":
-          if (event.phase === "running") upsertStep(event.agent, "running");
-          if (event.phase === "succeeded") upsertStep(event.agent, "done");
-          if (event.phase === "failed") upsertStep(event.agent, "error");
-          break;
-        case "file": {
-          const { change } = event;
-          const content = change.op === "delete" ? "" : (change.content ?? "");
-          set((s) => {
-            const files = { ...s.files };
-            if (change.op === "delete") {
-              delete files[change.path];
-            } else {
-              files[change.path] = content;
-            }
-            return {
-              files,
-              tree: rebuildTree(files),
-              activeFilePath: s.activeFilePath ?? change.path,
-            };
+        case "status":
+          updateAssistant({
+            status:
+              event.status === "succeeded"
+                ? "done"
+                : event.status === "failed"
+                  ? "error"
+                  : "running",
           });
-          if (change.op === "delete") {
-            void webContainerService.syncDelete(change.path);
-          } else {
-            void webContainerService.syncFile(change.path, content);
+          break;
+        case "stage":
+          if (event.stage === "preview") {
+            set({ serverStatus: "starting", previewUrl: null });
           }
-          set((s) => ({
-            messages: s.messages.map((m) =>
-              m.id === assistantId
-                ? { ...m, files: [...(m.files ?? []), change.path] }
-                : m,
-            ),
-          }));
+          updateAssistant({
+            stage: event.stage,
+            stageMessage: event.message,
+          });
           break;
-        }
         case "log":
-          terminalBus.writeLine(`\u001b[2m${event.message}\u001b[0m`);
+          if (event.message) terminalBus.write(event.message);
           break;
-        case "review":
-          updateAssistant({ content: event.review.summary });
+        case "activity":
+          updateActivity(event.activity);
           break;
       }
     };
-
-    const history = get().messages
-      .filter((m) => m.content)
-      .map((m) => ({ role: m.role, content: m.content }));
-
-    const pkgBefore = get().files["package.json"] ?? "";
 
     try {
-      const { summary, fileCount, ok, creditsUsed, creditsRemaining, signedIn } =
-        await runViaServer(
-          { projectId, prompt, files: get().files, history },
-          onEvent,
-        );
+      const {
+        summary,
+        tokensUsed,
+        tokensRemaining,
+        signedIn,
+        files,
+        previewUrl,
+      } =
+        await runViaServer({ projectId, prompt }, onEvent);
+
+      set({ previewUrl, serverStatus: "ready" });
 
       updateAssistant({
-        content:
-          summary ??
-          (ok
-            ? `Done — applied ${fileCount} file change(s).`
-            : "I couldn't complete that — check the terminal for details."),
-        ...(creditsUsed != null ? { credits: creditsUsed } : {}),
+        content: summary,
+        files,
+        ...(tokensUsed != null ? { tokens: tokensUsed } : {}),
       });
 
-      if (signedIn && creditsRemaining != null) {
-        set((s) => ({
-          credits: {
-            signedIn: true,
-            balance: creditsRemaining,
-            monthly: s.credits?.monthly ?? creditsRemaining,
-          },
-        }));
+      const state = await getProjectState(projectId);
+      if (state && get().projectId === projectId) {
+        const activeFilePath = get().activeFilePath;
+        set({
+          files: state.files,
+          tree: buildFileTree(state.files),
+          activeFilePath:
+            activeFilePath && state.files[activeFilePath] !== undefined
+              ? activeFilePath
+              : Object.keys(state.files)[0] ?? null,
+        });
+      }
+
+      if (signedIn && tokensRemaining != null) {
+        set({
+          tokens: { signedIn: true, balance: tokensRemaining },
+        });
       }
     } catch (serverErr) {
-      if (serverErr instanceof InsufficientCreditsError) {
-        set((s) => ({
-          credits: {
-            signedIn: true,
-            balance: serverErr.balance,
-            monthly: s.credits?.monthly ?? 0,
-          },
-        }));
+      if (serverErr instanceof InsufficientTokensError) {
+        set({
+          tokens: { signedIn: true, balance: serverErr.balance },
+        });
         updateAssistant({
-          content: "You're out of credits. Top up your plan to continue generating.",
+          content: "You're out of tokens. Buy more tokens to continue generating.",
+          status: "error",
         });
         return;
       }
 
+      set((s) => ({
+        messages: s.messages.map((message) =>
+          message.id === assistantId
+            ? {
+                ...message,
+                activities: message.activities?.map((activity) =>
+                  activity.status === "running"
+                    ? { ...activity, status: "error" }
+                    : activity,
+                ),
+              }
+            : message,
+        ),
+      }));
       updateAssistant({
-        content:
-          serverErr instanceof Error
-            ? `Generation failed: ${serverErr.message}`
-            : "Generation failed — check the terminal for details.",
+        content: "",
+        status: "error",
+        stageMessage:
+          serverErr instanceof Error &&
+          [
+            "network error",
+            "Failed to fetch",
+            "Load failed",
+            "generation-stream-ended",
+          ].includes(serverErr.message)
+            ? "Generation stopped because the connection was lost."
+            : serverErr instanceof Error
+              ? serverErr.message
+              : "Something went wrong. Please try again.",
       });
+      set({ serverStatus: "error", previewUrl: null });
     } finally {
       set({ isGenerating: false });
       updateAssistant({ durationMs: Date.now() - startedAt });
-
-      if (webContainerService.isMounted) {
-        const pkgAfter = get().files["package.json"] ?? "";
-        if (dependenciesChanged(pkgBefore, pkgAfter)) {
-          terminalBus.writeLine("\u001b[36m[preview] Dependencies changed — reinstalling…\u001b[0m");
-          void webContainerService.resyncDependencies();
-        }
-      }
-
-      void (async () => {
-        try {
-          const s = get();
-          await saveProjectState(projectId, {
-            files: s.files,
-            messages: s.messages
-              .filter((m) => m.content)
-              .map((m) => ({ role: m.role, content: m.content })),
-          });
-        } catch { /* persistence unavailable */ }
-      })();
     }
   },
 
@@ -483,18 +571,25 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   writeFile: (path, content) => {
     set((s) => {
       const files = { ...s.files, [path]: content };
-      return { files, tree: rebuildTree(files) };
+      return { files, tree: buildFileTree(files) };
     });
-    scheduleContainerSync(path, content);
+    const sandboxId = get().sandboxId;
+    if (sandboxId) scheduleSandboxWrite(sandboxId, path, content);
   },
 
   createFile: (path) => {
     if (get().files[path] !== undefined) return;
     set((s) => {
       const files = { ...s.files, [path]: "" };
-      return { files, tree: rebuildTree(files), activeFilePath: path };
+      return { files, tree: buildFileTree(files), activeFilePath: path };
     });
-    void webContainerService.syncFile(path, "");
+    const sandboxId = get().sandboxId;
+    if (sandboxId) {
+      void patchSandbox(sandboxId, {
+        action: "writeFiles",
+        files: { [path]: "" },
+      }).catch(() => {});
+    }
   },
 
   createFolder: (path) => {
@@ -504,9 +599,15 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (get().files[keep] !== undefined) return;
     set((s) => {
       const files = { ...s.files, [keep]: "" };
-      return { files, tree: rebuildTree(files) };
+      return { files, tree: buildFileTree(files) };
     });
-    void webContainerService.syncFile(keep, "");
+    const sandboxId = get().sandboxId;
+    if (sandboxId) {
+      void patchSandbox(sandboxId, {
+        action: "writeFiles",
+        files: { [keep]: "" },
+      }).catch(() => {});
+    }
   },
 
   deleteFile: (path) => {
@@ -514,9 +615,16 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const files = { ...s.files };
       delete files[path];
       const activeFilePath = s.activeFilePath === path ? null : s.activeFilePath;
-      return { files, tree: rebuildTree(files), activeFilePath };
+      return { files, tree: buildFileTree(files), activeFilePath };
     });
-    void webContainerService.syncDelete(path);
+    cancelSandboxWrite(path);
+    const sandboxId = get().sandboxId;
+    if (sandboxId) {
+      void patchSandbox(sandboxId, {
+        action: "removeFiles",
+        paths: [path],
+      }).catch(() => {});
+    }
   },
 
   deleteFolder: (path) => {
@@ -532,9 +640,16 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         s.activeFilePath && targets.includes(s.activeFilePath)
           ? null
           : s.activeFilePath;
-      return { files, tree: rebuildTree(files), activeFilePath };
+      return { files, tree: buildFileTree(files), activeFilePath };
     });
-    for (const p of targets) void webContainerService.syncDelete(p);
+    for (const p of targets) cancelSandboxWrite(p);
+    const sandboxId = get().sandboxId;
+    if (sandboxId) {
+      void patchSandbox(sandboxId, {
+        action: "removeFiles",
+        paths: targets,
+      }).catch(() => {});
+    }
   },
 
   renameFile: (from, to) => {
@@ -545,10 +660,17 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       files[to] = files[from] ?? "";
       delete files[from];
       const activeFilePath = s.activeFilePath === from ? to : s.activeFilePath;
-      return { files, tree: rebuildTree(files), activeFilePath };
+      return { files, tree: buildFileTree(files), activeFilePath };
     });
-    void webContainerService.syncDelete(from);
-    void webContainerService.syncFile(to, content);
+    cancelSandboxWrite(from);
+    const sandboxId = get().sandboxId;
+    if (sandboxId) {
+      void patchSandbox(sandboxId, {
+        action: "renameFile",
+        oldPath: from,
+        newPath: to,
+      }).catch(() => {});
+    }
   },
 
   renameFolder: (from, to) => {
@@ -574,26 +696,91 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         delete files[m.from];
         if (activeFilePath === m.from) activeFilePath = m.to;
       }
-      return { files, tree: rebuildTree(files), activeFilePath };
+      return { files, tree: buildFileTree(files), activeFilePath };
     });
 
     for (const m of moves) {
-      void webContainerService.syncDelete(m.from);
-      void webContainerService.syncFile(m.to, get().files[m.to] ?? "");
+      cancelSandboxWrite(m.from);
+      const sandboxId = get().sandboxId;
+      if (sandboxId) {
+        void patchSandbox(sandboxId, {
+          action: "renameFile",
+          oldPath: m.from,
+          newPath: m.to,
+        }).catch(() => {});
+      }
     }
   },
 
   bootPreview: async () => {
-    if (!webContainerService.isSupported) {
-      terminalBus.writeLine(
-        "\u001b[33mWebContainers require a cross-origin-isolated context. Preview runs in supported browsers.\u001b[0m",
-      );
+    set({ serverStatus: "installing", previewUrl: null });
+    let sandboxId = get().sandboxId;
+    const projectId = get().projectId;
+    if (!sandboxId && projectId) {
+      try {
+        const state = await getProjectState(projectId);
+        if (state?.sandboxId) {
+          let response = await fetch(`/api/sandboxes/${state.sandboxId}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "reconnect" }),
+          });
+          if (response.status === 410) {
+            response = await fetch(`/api/sandboxes/${state.sandboxId}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "restart" }),
+            });
+          }
+          if (response.ok) {
+            const data = (await response.json()) as { sandboxId: string };
+            sandboxId = data.sandboxId;
+            set({ sandboxId });
+          }
+        }
+      } catch { /* sandbox unavailable */ }
+    }
+    if (!sandboxId) {
+      set({ serverStatus: "error" });
+      terminalBus.writeLine("\u001b[31mSandbox is not ready.\u001b[0m");
       return;
     }
+
     try {
-      await webContainerService.mount(get().files);
-      await webContainerService.startDevServer();
+      const onEvent = (event: PreviewEvent) => {
+        if (event.type === "status") set({ serverStatus: event.status });
+        if (event.type === "log") terminalBus.write(event.data);
+        if (event.type === "ready") {
+          set({ previewUrl: event.url, serverStatus: "ready" });
+        }
+      };
+
+      try {
+        await streamPreview(sandboxId, onEvent);
+      } catch (error) {
+        if (!(error instanceof Error) || error.name !== "SandboxNotFoundError") {
+          throw error;
+        }
+
+        terminalBus.writeLine(
+          "\u001b[36m[preview] Sandbox expired — recovering…\u001b[0m",
+        );
+        const response = await fetch(`/api/sandboxes/${sandboxId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "restart" }),
+        });
+        if (!response.ok) {
+          throw new Error(`Sandbox recovery failed (${response.status})`);
+        }
+
+        const data = (await response.json()) as { sandboxId: string };
+        sandboxId = data.sandboxId;
+        set({ sandboxId, serverStatus: "installing" });
+        await streamPreview(sandboxId, onEvent);
+      }
     } catch (err) {
+      set({ serverStatus: "error" });
       terminalBus.writeLine(
         `\u001b[31m${err instanceof Error ? err.message : "Preview failed to boot"}\u001b[0m`,
       );
@@ -602,6 +789,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   restartPreview: async () => {
     set({ serverStatus: "starting", previewUrl: null });
-    await webContainerService.restart();
+    await get().bootPreview();
   },
 }));

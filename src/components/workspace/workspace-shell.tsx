@@ -6,6 +6,7 @@ import {
   Panel,
   PanelGroup,
   PanelResizeHandle,
+  type ImperativePanelHandle,
 } from "react-resizable-panels";
 import { Code2, Eye, Play, Download, ChevronLeft } from "lucide-react";
 import { useWorkspace } from "@/features/workspace/store";
@@ -32,9 +33,7 @@ function ResizeHandle({ vertical }: { vertical?: boolean }) {
       <div
         className={cn(
           "absolute z-10",
-          vertical
-            ? "inset-x-0 -top-1 h-2"
-            : "inset-y-0 -left-1 w-2",
+          vertical ? "inset-x-0 -top-1 h-2" : "inset-y-0 -left-1 w-2",
         )}
       />
     </PanelResizeHandle>
@@ -43,10 +42,17 @@ function ResizeHandle({ vertical }: { vertical?: boolean }) {
 
 export function WorkspaceShell({ projectId }: { projectId: string }) {
   const [showFiles, setShowFiles] = React.useState(true);
-  const [view, setView] = React.useState<"editor" | "preview">("editor");
+  const [view, setView] = React.useState<"editor" | "preview">("preview");
   const bootPreview = useWorkspace((s) => s.bootPreview);
   const serverStatus = useWorkspace((s) => s.serverStatus);
   const files = useWorkspace((s) => s.files);
+  const isGenerating = useWorkspace((s) => s.isGenerating);
+  const terminalPanel = React.useRef<ImperativePanelHandle>(null);
+
+  React.useEffect(() => {
+    if (view === "preview") terminalPanel.current?.collapse();
+    else terminalPanel.current?.expand();
+  }, [view]);
 
   const fileCount = Object.keys(files).length;
 
@@ -78,10 +84,10 @@ export function WorkspaceShell({ projectId }: { projectId: string }) {
               <ChevronLeft className="h-4 w-4" />
             </Link>
           </Button>
-          <span className="text-sm font-medium">Untitled project</span>
-          <span className="rounded-md bg-foreground/[0.04] px-2 py-0.5 text-[11px] text-muted-foreground">
+          {/* <span className="text-sm font-medium">Untitled project</span> */}
+          {/* <span className="rounded-md bg-foreground/[0.04] px-2 py-0.5 text-[11px] text-muted-foreground">
             {projectId.slice(0, 12)}
-          </span>
+          </span> */}
 
           <div className="ml-auto flex items-center gap-2">
             <ThemeToggle />
@@ -99,8 +105,9 @@ export function WorkspaceShell({ projectId }: { projectId: string }) {
               </button>
               <button
                 onClick={() => setView("preview")}
+                disabled={isGenerating}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition-colors",
+                  "inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
                   view === "preview"
                     ? "bg-foreground/10 text-foreground"
                     : "text-muted-foreground hover:text-foreground",
@@ -117,7 +124,10 @@ export function WorkspaceShell({ projectId }: { projectId: string }) {
                 setView("preview");
                 void bootPreview();
               }}
-              disabled={serverStatus !== "idle" && serverStatus !== "error"}
+              disabled={
+                isGenerating ||
+                (serverStatus !== "idle" && serverStatus !== "error")
+              }
             >
               <Play className="h-3.5 w-3.5" /> Run
             </Button>
@@ -135,21 +145,27 @@ export function WorkspaceShell({ projectId }: { projectId: string }) {
 
         {/* Panels */}
         <PanelGroup direction="horizontal" className="flex-1">
-          {showFiles && (
+          {showFiles && view === "editor" && (
             <>
-              <Panel defaultSize={16} minSize={12} maxSize={28} className="bg-card/20">
+              <Panel
+                order={1}
+                defaultSize={16}
+                minSize={12}
+                maxSize={25}
+                className="bg-card/20"
+              >
                 <FileExplorer />
               </Panel>
               <ResizeHandle />
             </>
           )}
 
-          <Panel defaultSize={30} minSize={22}>
+          <Panel order={2} defaultSize={24} minSize={22}>
             <ChatPanel />
           </Panel>
           <ResizeHandle />
 
-          <Panel defaultSize={54} minSize={30}>
+          <Panel order={3} defaultSize={60} minSize={30}>
             <PanelGroup direction="vertical">
               <Panel defaultSize={70} minSize={30}>
                 <div className="h-full" hidden={view !== "editor"}>
@@ -160,7 +176,12 @@ export function WorkspaceShell({ projectId }: { projectId: string }) {
                 </div>
               </Panel>
               <ResizeHandle vertical />
-              <Panel defaultSize={30} minSize={12}>
+              <Panel
+                ref={terminalPanel}
+                collapsible
+                defaultSize={30}
+                minSize={12}
+              >
                 <TerminalPanel />
               </Panel>
             </PanelGroup>

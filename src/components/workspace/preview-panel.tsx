@@ -9,15 +9,11 @@ import {
   RefreshCw,
   RotateCw,
 } from "lucide-react";
-import { useWorkspace } from "@/features/workspace/store";
-import { webContainerService } from "@/features/webcontainer/service";
+import { useWorkspace, type ServerStatus } from "@/features/workspace/store";
 import { Button } from "@/components/ui/button";
-import type { ServerStatus } from "@/features/webcontainer/service";
 
 const statusCopy: Record<ServerStatus, string> = {
   idle: "Not started",
-  booting: "Booting runtime…",
-  mounting: "Mounting files…",
   installing: "Installing dependencies…",
   starting: "Starting dev server…",
   ready: "Live",
@@ -29,9 +25,9 @@ export function PreviewPanel() {
   const previewUrl = useWorkspace((s) => s.previewUrl);
   const bootPreview = useWorkspace((s) => s.bootPreview);
   const restartPreview = useWorkspace((s) => s.restartPreview);
+  const isGenerating = useWorkspace((s) => s.isGenerating);
   const [iframeKey, setIframeKey] = React.useState(0);
 
-  const supported = webContainerService.isSupported;
   const busy =
     serverStatus !== "idle" &&
     serverStatus !== "ready" &&
@@ -60,7 +56,7 @@ export function PreviewPanel() {
             variant="ghost"
             size="icon-sm"
             onClick={() => setIframeKey((k) => k + 1)}
-            disabled={!previewUrl}
+            disabled={isGenerating || !previewUrl}
             aria-label="Refresh preview"
           >
             <RefreshCw className="h-3.5 w-3.5" />
@@ -69,7 +65,7 @@ export function PreviewPanel() {
             variant="ghost"
             size="icon-sm"
             onClick={() => void restartPreview()}
-            disabled={serverStatus === "idle"}
+            disabled={isGenerating || serverStatus === "idle"}
             aria-label="Restart server"
           >
             <RotateCw className="h-3.5 w-3.5" />
@@ -82,7 +78,7 @@ export function PreviewPanel() {
                 window.open(previewUrl, "_blank", "noopener,noreferrer");
               }
             }}
-            disabled={!previewUrl}
+            disabled={isGenerating || !previewUrl}
             aria-label="Open preview in new tab"
           >
             <ExternalLink className="h-3.5 w-3.5" />
@@ -91,20 +87,27 @@ export function PreviewPanel() {
       </div>
 
       <div className="relative flex-1">
+        {isGenerating && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/80 text-sm text-muted-foreground backdrop-blur-sm">
+            Preview is locked while code is generating…
+          </div>
+        )}
         {previewUrl ? (
           <iframe
             key={iframeKey}
             src={previewUrl}
             className="h-full w-full bg-white"
             title="Live preview"
+            tabIndex={isGenerating ? -1 : undefined}
             sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
           />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-4 p-6 text-center">
-            {!supported ? (
-              <Unsupported />
-            ) : serverStatus === "error" ? (
-              <ErrorState onRetry={() => void bootPreview()} />
+            {serverStatus === "error" ? (
+              <ErrorState
+                onRetry={() => void bootPreview()}
+                disabled={isGenerating}
+              />
             ) : busy ? (
               <div className="flex flex-col items-center gap-3 text-muted-foreground">
                 <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -113,9 +116,13 @@ export function PreviewPanel() {
             ) : (
               <div className="flex flex-col items-center gap-3">
                 <p className="max-w-xs text-sm text-muted-foreground">
-                  Boot the in-browser runtime to see your app live.
+                  Start the remote runtime to see your app live.
                 </p>
-                <Button variant="brand" onClick={() => void bootPreview()}>
+                <Button
+                  variant="brand"
+                  onClick={() => void bootPreview()}
+                  disabled={isGenerating}
+                >
                   <Play className="h-4 w-4" /> Run preview
                 </Button>
               </div>
@@ -127,28 +134,18 @@ export function PreviewPanel() {
   );
 }
 
-function Unsupported() {
-  return (
-    <div className="flex max-w-sm flex-col items-center gap-2 text-muted-foreground">
-      <AlertTriangle className="h-6 w-6 text-amber-400" />
-      <p className="text-sm font-medium text-foreground">
-        Preview needs cross-origin isolation
-      </p>
-      <p className="text-xs">
-        Live preview uses WebContainers, which require a cross-origin-isolated
-        browser context (Chrome/Edge desktop). The rest of the workspace works
-        everywhere.
-      </p>
-    </div>
-  );
-}
-
-function ErrorState({ onRetry }: { onRetry: () => void }) {
+function ErrorState({
+  onRetry,
+  disabled,
+}: {
+  onRetry: () => void;
+  disabled: boolean;
+}) {
   return (
     <div className="flex flex-col items-center gap-3 text-muted-foreground">
       <AlertTriangle className="h-6 w-6 text-red-400" />
       <p className="text-sm">The dev server hit an error. Check the terminal.</p>
-      <Button variant="outline" size="sm" onClick={onRetry}>
+      <Button variant="outline" size="sm" onClick={onRetry} disabled={disabled}>
         Try again
       </Button>
     </div>

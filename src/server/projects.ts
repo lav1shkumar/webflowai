@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { killSandbox } from "@/server/e2b";
 import { getCurrentDbUser } from "@/server/user";
 
 export interface ProjectSummary {
@@ -9,13 +10,13 @@ export interface ProjectSummary {
   name: string;
   description: string;
   status: "READY" | "GENERATING" | "DRAFT" | "ERROR" | "ARCHIVED";
-  framework: string;
   updatedAt: string;
   gradient: string;
 }
 
 export interface ProjectState {
   id: string;
+  sandboxId: string | null;
   name: string;
   prompt: string | null;
   files: Record<string, string>;
@@ -60,41 +61,6 @@ function deriveName(prompt: string): string {
   return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
-/**
- * Infer the project framework from its files (config files first, then
- * package.json dependencies). Returns null when undetectable so callers can
- * leave the stored value untouched.
- */
-function detectFramework(files: Record<string, string>): string | null {
-  const paths = Object.keys(files);
-  const has = (re: RegExp) => paths.some((p) => re.test(p));
-
-  if (has(/(^|\/)vite\.config\.(ts|js|mjs)$/)) return "vite";
-  if (has(/(^|\/)next\.config\.(ts|js|mjs)$/)) return "next";
-  if (has(/(^|\/)astro\.config\.(ts|js|mjs)$/)) return "astro";
-
-  const pkg = files["package.json"];
-  if (pkg) {
-    try {
-      const parsed = JSON.parse(pkg) as {
-        dependencies?: Record<string, string>;
-        devDependencies?: Record<string, string>;
-      };
-      const deps = {
-        ...(parsed.dependencies ?? {}),
-        ...(parsed.devDependencies ?? {}),
-      };
-      if (deps.next) return "next";
-      if (deps["@remix-run/react"]) return "remix";
-      if (deps.astro) return "astro";
-      if (deps.vite) return "vite";
-    } catch {
-      /* ignore malformed package.json */
-    }
-  }
-  return null;
-}
-
 /** Create a new project owned by the current user. */
 export async function createProject(input: {
   prompt: string;
@@ -126,8 +92,7 @@ export async function createProject(input: {
       templateId: input.templateId ?? null,
       ownerId: user.id,
       status: "DRAFT",
-      // The agent pipeline scaffolds Vite + React SPAs (WebContainer-friendly).
-      framework: "vite",
+      framework: "next",
     },
   });
 
@@ -174,9 +139,17 @@ export async function deleteProject(
 
   const project = await prisma.project.findFirst({
     where: { id, ownerId: user.id },
-    select: { id: true },
+    select: { id: true, sandboxId: true },
   });
   if (!project) return { ok: false, error: "not-found" };
+
+  if (project.sandboxId) {
+    try {
+      await killSandbox(project.sandboxId);
+    } catch {
+      return { ok: false, error: "sandbox-cleanup-failed" };
+    }
+  }
 
   await prisma.project.delete({ where: { id: project.id } });
 
@@ -199,7 +172,6 @@ export async function listProjects(): Promise<ProjectSummary[]> {
     name: p.name,
     description: p.prompt ?? p.description ?? "AI-generated application.",
     status: p.status as ProjectSummary["status"],
-    framework: p.framework,
     updatedAt: p.updatedAt.toISOString(),
     gradient: gradientFor(p.id),
   }));
@@ -213,7 +185,10 @@ export async function getProjectState(id: string): Promise<ProjectState | null> 
     where: { id, ownerId: user.id },
     include: {
       files: true,
-      messages: { orderBy: { createdAt: "asc" }, take: 200 },
+      messages: {
+        orderBy: [{ createdAt: "asc" }, { role: "asc" }],
+        take: 200,
+      },
     },
   });
   if (!project) return null;
@@ -225,6 +200,7 @@ export async function getProjectState(id: string): Promise<ProjectState | null> 
 
   return {
     id: project.id,
+    sandboxId: project.sandboxId,
     name: project.name,
     prompt: project.prompt,
     files: Object.fromEntries(project.files.map((f) => [f.path, f.content])),
@@ -237,64 +213,4 @@ export async function getProjectState(id: string): Promise<ProjectState | null> 
         createdAt: m.createdAt.getTime(),
       })),
   };
-}
-
-/** Persist the full workspace state (files + chat) for a project. */
-export async function saveProjectState(
-  id: string,
-  data: {
-    files: Record<string, string>;
-    messages?: { role: "user" | "assistant"; content: string }[];
-    name?: string;
-  },
-): Promise<{ ok: boolean }> {
-  const user = await getCurrentDbUser();
-  if (!user) return { ok: false };
-  const project = await prisma.project.findFirst({
-    where: { id, ownerId: user.id },
-    select: { id: true },
-  });
-  if (!project) return { ok: false };
-
-  const fileRows = Object.entries(data.files).map(([path, content]) => ({
-    projectId: id,
-    path,
-    content,
-    size: content.length,
-  }));
-
-  const ops: import("@prisma/client").Prisma.PrismaPromise<unknown>[] = [
-    prisma.file.deleteMany({ where: { projectId: id } }),
-  ];
-  if (fileRows.length > 0) {
-    ops.push(prisma.file.createMany({ data: fileRows }));
-  }
-  if (data.messages && data.messages.length > 0) {
-    ops.push(prisma.message.deleteMany({ where: { projectId: id } }));
-    ops.push(
-      prisma.message.createMany({
-        data: data.messages.map((m) => ({
-          projectId: id,
-          role: m.role === "user" ? "USER" : "ASSISTANT",
-          content: m.content,
-        })),
-      }),
-    );
-  }
-  const framework = detectFramework(data.files);
-  ops.push(
-    prisma.project.update({
-      where: { id },
-      data: {
-        status: "READY",
-        ...(data.name ? { name: data.name } : {}),
-        ...(framework ? { framework } : {}),
-      },
-    }),
-  );
-
-  await prisma.$transaction(ops);
-  revalidatePath("/dashboard");
-  revalidatePath("/projects");
-  return { ok: true };
 }

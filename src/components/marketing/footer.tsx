@@ -31,7 +31,7 @@ export function MarketingFooter() {
             <Logo />
             <p className="max-w-xs text-sm text-muted-foreground">
               Build production-ready SaaS applications from a prompt. AI,
-              WebContainers, and a conversational workflow.
+              cloud sandboxes, and a conversational workflow.
             </p>
           </div>
           {footerLinks.map((group) => (

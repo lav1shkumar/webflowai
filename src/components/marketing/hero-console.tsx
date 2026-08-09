@@ -6,16 +6,16 @@ import { ArrowRight, Loader2, Sparkles } from "lucide-react";
 import { examplePrompts } from "@/config/site";
 
 const buildSteps = [
-  "Planning architecture",
-  "Designing components",
+  "Understanding request",
+  "Planning files",
   "Generating code",
   "Applying changes",
-  "Reviewing output",
+  "Finalizing files",
 ];
 
 /**
  * A self-running mock of the generation console shown in the hero.
- * It cycles through example prompts and a faux multi-agent build to
+ * It cycles through example prompts and a simulated build to
  * communicate the product experience without a backend.
  */
 export function HeroConsole() {

@@ -3,7 +3,7 @@ export const siteConfig = {
   name: "WebFlowAI",
   tagline: "Build Full-Stack SaaS Apps With AI",
   description:
-    "Turn ideas into production-ready applications using AI, WebContainers, and a conversational development workflow.",
+    "Turn ideas into production-ready applications using AI, cloud sandboxes, and a conversational development workflow.",
   url: "https://webflowai.dev",
   links: {
     twitter: "https://twitter.com/webflowai",

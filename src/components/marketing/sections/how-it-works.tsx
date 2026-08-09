@@ -10,9 +10,9 @@ const steps = [
   },
   {
     n: "02",
-    title: "Agents plan & build",
+    title: "AI plans & builds",
     description:
-      "The Planner, Architect, and Generator agents design the structure and write the code.",
+      "The AI reads your project, plans the required files, and writes the code.",
   },
   {
     n: "03",

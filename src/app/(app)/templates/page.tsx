@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { AppTopbar } from "@/components/app/topbar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { templates } from "@/features/templates/data";
@@ -7,16 +8,16 @@ import { shortId } from "@/lib/utils";
 import { createProject } from "@/server/projects";
 
 export default function TemplatesPage() {
+  const router = useRouter();
+
   const launchTemplate = async (templateId: string, prompt: string, name: string) => {
     const params = new URLSearchParams({ prompt, template: templateId });
-    // Full-document navigation (not router.push) so the workspace loads with
-    // its COOP/COEP headers and is cross-origin isolated for WebContainers.
     try {
       const result = await createProject({ prompt, templateId, name });
       const id = result.ok ? result.id : shortId("proj");
-      window.location.assign(`/workspace/${id}?${params.toString()}`);
+      router.push(`/workspace/${id}?${params.toString()}`);
     } catch {
-      window.location.assign(`/workspace/${shortId("proj")}?${params.toString()}`);
+      router.push(`/workspace/${shortId("proj")}?${params.toString()}`);
     }
   };
 

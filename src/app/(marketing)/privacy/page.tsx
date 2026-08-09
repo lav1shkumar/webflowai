@@ -15,7 +15,8 @@ export default function PrivacyPage() {
           </h2>
           <p className="mt-2">
             When you use {siteConfig.name}, we collect information you provide
-            directly — your email, name, and payment details when subscribing.
+            directly — your email, name, and payment details when purchasing
+            tokens.
             We also collect usage data such as prompts sent, projects created,
             and general interaction patterns to improve the service.
           </p>
@@ -27,7 +28,7 @@ export default function PrivacyPage() {
           </h2>
           <ul className="mt-2 list-disc space-y-1 pl-5">
             <li>To provide and maintain the service</li>
-            <li>To process payments and manage your subscription</li>
+            <li>To process token-pack payments</li>
             <li>To send important updates about the service</li>
             <li>To improve and personalize your experience</li>
           </ul>
@@ -51,7 +52,7 @@ export default function PrivacyPage() {
           </h2>
           <p className="mt-2">
             We use third-party services for authentication (Clerk), payments
-            (Razorpay), and AI processing (Google Vertex AI). These services
+            (Razorpay), and AI processing (Azure OpenAI). These services
             have their own privacy policies governing their use of your data.
           </p>
         </section>

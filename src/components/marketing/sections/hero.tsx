@@ -26,7 +26,7 @@ export function Hero() {
             className="mx-auto mb-6 inline-flex items-center gap-2 rounded-full border border-border bg-foreground/[0.03] px-3 py-1.5 text-xs text-muted-foreground lg:mx-0"
           >
             <Sparkles className="h-3.5 w-3.5 text-primary" />
-            Now with multi-agent generation
+            Project-aware AI generation
             <span className="ml-1 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
               Beta
             </span>
@@ -49,7 +49,7 @@ export function Hero() {
             className="mx-auto mt-6 max-w-xl text-pretty text-lg text-muted-foreground lg:mx-0"
           >
             Turn ideas into production-ready applications using AI,
-            WebContainers, and a conversational development workflow.
+            cloud sandboxes, and a conversational development workflow.
           </motion.p>
 
           <motion.div

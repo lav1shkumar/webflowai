@@ -27,7 +27,7 @@ export const metadata: Metadata = {
     "AI code generator",
     "full-stack app builder",
     "AI SaaS builder",
-    "WebContainers",
+    "cloud development environment",
     "React app generator",
     "Next.js AI",
     "no-code AI",

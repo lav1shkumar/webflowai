@@ -3,11 +3,10 @@
 import * as React from "react";
 import { Trash2, TerminalSquare } from "lucide-react";
 import { useTheme } from "next-themes";
-import type { Terminal as XTerm } from "@xterm/xterm";
-import type { ITheme } from "@xterm/xterm";
+import type { ITheme, Terminal as XTerm } from "@xterm/xterm";
 import type { FitAddon as XFitAddon } from "@xterm/addon-fit";
-import { webContainerService } from "@/features/webcontainer/service";
 import { terminalBus } from "@/features/workspace/terminal-bus";
+import { useWorkspace } from "@/features/workspace/store";
 import "@xterm/xterm/css/xterm.css";
 
 /** xterm color palettes for each theme. */
@@ -59,20 +58,17 @@ const lightTheme: ITheme = {
   brightWhite: "#1c1610",
 };
 
-/**
- * Interactive terminal backed by xterm.js.
- *
- * xterm correctly interprets ANSI escape sequences (cursor moves, line
- * clears, spinners, colors) emitted by npm and the dev server — fixing the
- * raw-escape "gibberish" a naive renderer produces. Output arrives via the
- * {@link terminalBus}; keystrokes are forwarded to an interactive `jsh` shell
- * running inside the WebContainer.
- */
 export function TerminalPanel() {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const termRef = React.useRef<XTerm | null>(null);
+  const [terminalReady, setTerminalReady] = React.useState(false);
+  const sandboxId = useWorkspace((state) => state.sandboxId);
+  const isGenerating = useWorkspace((state) => state.isGenerating);
+  const isGeneratingRef = React.useRef(isGenerating);
+  isGeneratingRef.current = isGenerating;
   const { resolvedTheme } = useTheme();
   const isLight = resolvedTheme === "light";
+  const theme = isLight ? lightTheme : darkTheme;
 
   React.useEffect(() => {
     let disposed = false;
@@ -86,13 +82,14 @@ export function TerminalPanel() {
       if (disposed || !containerRef.current) return;
 
       const term = new Terminal({
-        convertEol: false,
         cursorBlink: true,
+        convertEol: true,
         fontSize: 12.5,
         lineHeight: 1.35,
         fontFamily:
           "ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, Consolas, monospace",
-        theme: isLight ? lightTheme : darkTheme,
+        theme,
+        disableStdin: isGeneratingRef.current,
       });
       const fit = new FitAddon();
       term.loadAddon(fit);
@@ -100,39 +97,19 @@ export function TerminalPanel() {
       safeFit(fit);
       termRef.current = term;
 
-      // Render buffered output, then stream live output.
-      terminalBus.replay((chunk) => term.write(chunk));
-      const offData = terminalBus.onData((chunk) => term.write(chunk));
-      const offClear = terminalBus.onClear(() => term.clear());
-
-      // Forward keystrokes to the interactive shell.
-      const keyDisposable = term.onData((data) =>
-        webContainerService.writeToShell(data),
-      );
-
-      // Boot the interactive shell (best-effort; needs cross-origin isolation).
-      if (webContainerService.isSupported) {
-        try {
-          await webContainerService.startShell(term.cols, term.rows);
-        } catch {
-          /* shell is optional; logs still render */
-        }
-      } else {
-        term.writeln(
-          "\u001b[33mInteractive shell requires a cross-origin-isolated browser (Chrome/Edge desktop).\u001b[0m",
-        );
-      }
+      const unsubscribe = terminalBus.subscribe({
+        write: (chunk) => term.write(chunk),
+        clear: () => term.clear(),
+      });
 
       const ro = new ResizeObserver(() => {
         safeFit(fit);
-        webContainerService.resizeShell(term.cols, term.rows);
       });
       ro.observe(containerRef.current);
+      setTerminalReady(true);
 
       cleanup = () => {
-        offData();
-        offClear();
-        keyDisposable.dispose();
+        unsubscribe();
         ro.disconnect();
         term.dispose();
         termRef.current = null;
@@ -148,12 +125,194 @@ export function TerminalPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  React.useEffect(() => {
+    const term = termRef.current;
+    if (!terminalReady || !sandboxId || !term) return;
+
+    const controller = new AbortController();
+    const endpoint = `/api/sandboxes/${sandboxId}/terminal`;
+    let pid: number | null = null;
+    let stopped = false;
+    let atPrompt = false;
+    let promptTail = "";
+    let localInputLength = 0;
+    let pendingEcho = "";
+    let pendingInput = "";
+    let sendingInput = false;
+
+    const send = (body: object) =>
+      fetch(endpoint, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }).catch(() => undefined);
+
+    const flushInput = async () => {
+      if (!pid || sendingInput || !pendingInput) return;
+      const data = pendingInput;
+      pendingInput = "";
+      sendingInput = true;
+      await send({ action: "input", pid, data });
+      sendingInput = false;
+      void flushInput();
+    };
+
+    const writeInput = (data: string) => {
+      if (!atPrompt) return;
+      if (data === "\r") {
+        term.write("\r\n");
+        pendingEcho += data;
+        atPrompt = false;
+        promptTail = "";
+        localInputLength = 0;
+      } else if (data === "\u007f" && localInputLength > 0) {
+        term.write("\b \b");
+        pendingEcho += data;
+        localInputLength--;
+      } else if (
+        [...data].every((character) => {
+          const code = character.charCodeAt(0);
+          return code >= 32 && code !== 127;
+        })
+      ) {
+        term.write(data);
+        pendingEcho += data;
+        localInputLength += [...data].length;
+      }
+    };
+
+    const removeEcho = (data: string) => {
+      let output = data;
+      while (pendingEcho && output) {
+        const expected = pendingEcho[0];
+        if (output.charCodeAt(0) === 27 && output[1] === "[") {
+          let end = 2;
+          while (end < output.length) {
+            const code = output.charCodeAt(end);
+            if (code >= 64 && code <= 126) break;
+            end++;
+          }
+          if (end === output.length) break;
+          output = output.slice(end + 1);
+          continue;
+        }
+        if (expected !== "\r" && output[0] === "\r") {
+          output = output.slice(1);
+          continue;
+        }
+        if (expected === "\r" && output.startsWith("\r\n")) {
+          output = output.slice(2);
+        } else if (expected === "\r" && (output[0] === "\r" || output[0] === "\n")) {
+          output = output.slice(1);
+        } else if (expected === "\u007f" && output.startsWith("\b \b")) {
+          output = output.slice(3);
+        } else if (output[0] === expected) {
+          output = output.slice(1);
+        } else {
+          pendingEcho = "";
+          break;
+        }
+        pendingEcho = pendingEcho.slice(1);
+      }
+      return output;
+    };
+
+    const keyDisposable = term.onData((data) => {
+      if (isGeneratingRef.current) return;
+      writeInput(data);
+      pendingInput += data;
+      void flushInput();
+    });
+    const resizeDisposable = term.onResize(({ cols, rows }) => {
+      if (pid) void send({ action: "resize", pid, cols, rows });
+    });
+
+    void (async () => {
+      while (!controller.signal.aborted && !stopped) {
+        try {
+          const response = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              pid: pid ?? undefined,
+              cols: term.cols,
+              rows: term.rows,
+            }),
+            signal: controller.signal,
+          });
+          if (!response.ok || !response.body) {
+            throw new Error(`Terminal failed (${response.status})`);
+          }
+
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+
+          while (!stopped) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() ?? "";
+
+            for (const line of lines) {
+              if (!line) continue;
+              const event = JSON.parse(line);
+              if (event.type === "ready") {
+                pid = event.pid;
+                atPrompt = true;
+                void flushInput();
+              }
+              if (event.type === "data") {
+                const output = removeEcho(event.data);
+                if (output) {
+                  terminalBus.write(output);
+                  promptTail = (promptTail + output).slice(-200);
+                  if (promptTail.includes("$") || promptTail.includes("#")) {
+                    atPrompt = true;
+                  }
+                }
+              }
+              if (event.type === "exit") stopped = true;
+              if (event.type === "error") {
+                terminalBus.writeLine(`\u001b[31m${event.message}\u001b[0m`);
+                stopped = true;
+              }
+            }
+          }
+
+          if (!pid) stopped = true;
+        } catch (error) {
+          if (!controller.signal.aborted) {
+            terminalBus.writeLine(
+              `\u001b[31m${error instanceof Error ? error.message : "Terminal failed"}\u001b[0m`,
+            );
+          }
+          stopped = true;
+        }
+      }
+    })();
+
+    return () => {
+      controller.abort();
+      keyDisposable.dispose();
+      resizeDisposable.dispose();
+      if (pid) void send({ action: "kill", pid });
+    };
+  }, [sandboxId, terminalReady]);
+
   // Update the xterm palette live when the app theme changes.
   React.useEffect(() => {
     if (termRef.current) {
-      termRef.current.options.theme = isLight ? lightTheme : darkTheme;
+      termRef.current.options.theme = theme;
     }
-  }, [isLight]);
+  }, [theme]);
+
+  React.useEffect(() => {
+    if (termRef.current) {
+      termRef.current.options.disableStdin = isGenerating;
+    }
+  }, [isGenerating]);
 
   return (
     <div className="flex h-full flex-col bg-background">
@@ -164,13 +323,21 @@ export function TerminalPanel() {
         </span>
         <button
           onClick={() => terminalBus.clear()}
-          className="ml-auto rounded p-1 text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
+          disabled={isGenerating}
+          className="ml-auto rounded p-1 text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
           aria-label="Clear terminal"
         >
           <Trash2 className="h-3.5 w-3.5" />
         </button>
       </div>
-      <div ref={containerRef} className="min-h-0 flex-1 overflow-hidden px-2 py-1" />
+      <div className="relative min-h-0 flex-1">
+        <div ref={containerRef} className="h-full overflow-hidden px-2 py-1" />
+        {isGenerating && (
+          <div className="absolute inset-0 flex items-center justify-center bg-background/80 text-sm text-muted-foreground backdrop-blur-sm">
+            Terminal is locked while code is generating…
+          </div>
+        )}
+      </div>
     </div>
   );
 }

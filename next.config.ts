@@ -13,30 +13,12 @@ import { config as loadEnv } from "dotenv";
  */
 loadEnv({ override: true });
 
-/**
- * WebContainers require cross-origin isolation (SharedArrayBuffer).
- * We set COOP/COEP headers globally so the in-browser runtime can boot.
- */
 const nextConfig: NextConfig = {
   output: "standalone",
   reactStrictMode: true,
   poweredByHeader: false,
   experimental: {
     optimizePackageImports: ["lucide-react", "framer-motion"],
-  },
-  async headers() {
-    // Cross-origin isolation is required only by the WebContainer runtime in
-    // the workspace. Applying it globally would block third-party embeds
-    // (Razorpay Checkout, Clerk widgets), so we scope it to /workspace.
-    return [
-      {
-        source: "/workspace/:path*",
-        headers: [
-          { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
-          { key: "Cross-Origin-Embedder-Policy", value: "require-corp" },
-        ],
-      },
-    ];
   },
 };
 

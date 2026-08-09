@@ -62,9 +62,3 @@ export const clerkAppearanceLight = {
   },
   elements: sharedElements,
 };
-
-/**
- * Legacy export — defaults to dark. Use `clerkAppearanceDark` or
- * `clerkAppearanceLight` directly for theme-aware rendering.
- */
-export const clerkAppearance = clerkAppearanceDark;

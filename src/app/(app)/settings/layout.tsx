@@ -10,7 +10,6 @@ import { cn } from "@/lib/utils";
 const tabs = [
   { label: "Account", href: routes.settings },
   { label: "Billing", href: `${routes.settings}/billing` },
-  { label: "Preferences", href: `${routes.settings}/preferences` },
 ];
 
 export default function SettingsLayout({

@@ -13,7 +13,6 @@ import { PromptComposer } from "@/components/dashboard/prompt-composer";
 import { ProjectCard } from "@/components/dashboard/project-card";
 import { UsageChart } from "@/components/dashboard/usage-chart";
 import { CountUp } from "@/components/dashboard/count-up";
-import { CreditRing } from "@/components/dashboard/credit-ring";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -29,10 +28,6 @@ export default async function DashboardPage() {
     getGenerationUsage(),
   ]);
   const projectCount = projects.length;
-  const creditPct = Math.round(
-    (viewer.creditsBalance / Math.max(1, viewer.creditsMonthly)) * 100,
-  );
-
   return (
     <>
       <AppTopbar title="Dashboard" />
@@ -55,7 +50,7 @@ export default async function DashboardPage() {
               <QuickActionCard
                 href={routes.billing}
                 icon={<Coins className="h-5 w-5" />}
-                label="View AI Credits"
+                label="Buy AI Tokens"
               />
               <QuickActionCard
                 href={routes.projects}
@@ -72,32 +67,23 @@ export default async function DashboardPage() {
 
           {/* Stats Row */}
           <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {/* AI Credits */}
+            {/* AI Tokens */}
             <Card className="bg-card/60">
               <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
-                  AI Credits
+                  AI Tokens
                 </CardTitle>
                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
                   <Coins className="h-3.5 w-3.5" />
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="flex items-center gap-4">
-                  <CreditRing value={creditPct} />
-                  <div className="min-w-0">
-                    <div className="text-2xl font-bold">
-                      <CountUp value={viewer.creditsBalance} />
-                      <span className="text-sm font-normal text-muted-foreground">
-                        {" "}
-                        / {viewer.creditsMonthly}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      credits left · resets in 12 days
-                    </p>
-                  </div>
+                <div className="text-3xl font-bold">
+                  <CountUp value={viewer.tokensBalance} />
                 </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Available balance · never expires
+                </p>
               </CardContent>
             </Card>
 
