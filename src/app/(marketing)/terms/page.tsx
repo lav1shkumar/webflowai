@@ -105,7 +105,7 @@ export default function TermsPage() {
               href="mailto:support@webflowai.dev"
               className="text-foreground underline"
             >
-              support@webflowai.dev
+              support@webflowai.in
             </a>
             .
           </p>
