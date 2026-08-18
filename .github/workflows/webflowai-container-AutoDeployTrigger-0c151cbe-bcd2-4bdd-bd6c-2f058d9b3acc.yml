@@ -44,5 +44,7 @@ jobs:
           imageToBuild: lav1shkumar/webflowai-container:${{ github.sha }}
           buildArguments: |
             NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+            NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
+            NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
 
 
