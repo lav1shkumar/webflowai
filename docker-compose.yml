@@ -17,6 +17,21 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    container_name: webflowai-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - webflowai-redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   app:
     build:
       context: .
@@ -27,10 +42,13 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     env_file:
       - .env
     environment:
       DATABASE_URL: postgresql://webflowai:webflowai@postgres:5432/webflowai?schema=public
+      REDIS_URL: redis://redis:6379
       NODE_ENV: production
       PORT: 3000
     ports:
@@ -38,3 +56,4 @@ services:
 
 volumes:
   webflowai-pgdata:
+  webflowai-redisdata:
