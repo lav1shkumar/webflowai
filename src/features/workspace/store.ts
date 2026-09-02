@@ -11,6 +11,7 @@ import type {
   GenerationStage,
 } from "@/features/ai/types";
 import { shortId } from "@/lib/utils";
+import { throwIfRateLimited } from "@/lib/rate-limit-client";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -85,6 +86,7 @@ async function patchSandbox(sandboxId: string, body: unknown) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+  throwIfRateLimited(response);
   if (!response.ok) throw new Error(`Sandbox sync failed (${response.status})`);
 }
 
@@ -143,6 +145,7 @@ async function streamPreview(
   const response = await fetch(`/api/sandboxes/${sandboxId}/preview`, {
     method: "POST",
   });
+  throwIfRateLimited(response);
   if (!response.ok || !response.body) {
     throw new Error(`Preview request failed (${response.status})`);
   }
@@ -192,6 +195,8 @@ async function runViaServer(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
+
+  throwIfRateLimited(res);
 
   if (res.status === 402) {
     const data = (await res.json().catch(() => ({}))) as { balance?: number };
@@ -343,12 +348,15 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
                   body: JSON.stringify({ projectId }),
                 });
 
+            throwIfRateLimited(response);
+
             if (response.status === 410 && state.sandboxId) {
               response = await fetch(`/api/sandboxes/${state.sandboxId}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ action: "restart" }),
               });
+              throwIfRateLimited(response);
             }
 
             if (response.ok) {

@@ -4,6 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Check } from "lucide-react";
 import { toast } from "sonner";
+import { RateLimitError, throwIfRateLimited } from "@/lib/rate-limit-client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -44,6 +45,7 @@ export default function BillingSettingsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ packId }),
       });
+      throwIfRateLimited(res);
       const session = await res.json();
       if (!res.ok) throw new Error(session.error ?? "Checkout failed");
 
@@ -73,6 +75,7 @@ export default function BillingSettingsPage() {
                 razorpay_signature: response.razorpay_signature,
               }),
             });
+            throwIfRateLimited(verify);
             const data = await verify.json();
             if (!verify.ok || !data.ok) {
               throw new Error(data.error ?? "Payment verification failed");
@@ -81,9 +84,11 @@ export default function BillingSettingsPage() {
             loadPayments();
             router.refresh();
           } catch (error) {
-            toast.error(
-              error instanceof Error ? error.message : "Verification failed",
-            );
+            if (!(error instanceof RateLimitError)) {
+              toast.error(
+                error instanceof Error ? error.message : "Verification failed",
+              );
+            }
           } finally {
             setLoading(null);
           }
@@ -95,9 +100,11 @@ export default function BillingSettingsPage() {
         throw new Error("Couldn't open the Razorpay checkout.");
       }
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Could not start checkout",
-      );
+      if (!(error instanceof RateLimitError)) {
+        toast.error(
+          error instanceof Error ? error.message : "Could not start checkout",
+        );
+      }
       setLoading(null);
     }
   };
