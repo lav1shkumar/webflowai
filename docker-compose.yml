@@ -1,3 +1,5 @@
+# Local development only: the database credentials below are local defaults.
+# Production uses managed databases and Key Vault/Container App secret refs.
 services:
   postgres:
     image: postgres:16-alpine
@@ -8,7 +10,7 @@ services:
       POSTGRES_PASSWORD: webflowai
       POSTGRES_DB: webflowai
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - webflowai-pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -23,7 +25,7 @@ services:
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - webflowai-redisdata:/data
     healthcheck:
@@ -37,8 +39,24 @@ services:
       context: .
       args:
         NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+        NEXT_PUBLIC_CLERK_SIGN_UP_URL: ${NEXT_PUBLIC_CLERK_SIGN_UP_URL:-/sign-up}
+        NEXT_PUBLIC_CLERK_SIGN_IN_URL: ${NEXT_PUBLIC_CLERK_SIGN_IN_URL:-/sign-in}
     container_name: webflowai-app
     restart: unless-stopped
+    init: true
+    user: "1001:1001"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 1g
+    cpus: 1.0
+    stop_grace_period: 30s
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,uid=1001,gid=1001,mode=1770
+      - /app/.next/cache:rw,noexec,nosuid,nodev,size=256m,uid=1001,gid=1001,mode=0700
     depends_on:
       postgres:
         condition: service_healthy
@@ -52,7 +70,7 @@ services:
       NODE_ENV: production
       PORT: 3000
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
 
 volumes:
   webflowai-pgdata:

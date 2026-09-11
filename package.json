@@ -2,6 +2,7 @@
   "name": "webflowai",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@11.18.0",
   "scripts": {
     "dev": "docker compose up -d --wait postgres redis && next dev",
     "dev:no-db": "next dev",
@@ -48,8 +49,8 @@
     "next-themes": "0.4.4",
     "pg": "8.13.1",
     "prettier": "3.9.6",
-    "react": "19.0.0",
-    "react-dom": "19.0.0",
+    "react": "19.0.8",
+    "react-dom": "19.0.8",
     "react-markdown": "^10.1.0",
     "react-resizable-panels": "2.1.7",
     "redis": "^6.2.1",

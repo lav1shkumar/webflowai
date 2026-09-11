@@ -1,6 +1,37 @@
-node_modules
-.next
-.git
-.env
-.env.local
-*.log
+# Install dependencies and build from the trusted source and lockfile.
+**/node_modules
+**/.next
+**/.git
+**/.codex
+**/.agents
+
+# Never include environment files or developer/provider credentials in any
+# image layer. Public build settings must be explicit NEXT_PUBLIC_* arguments.
+**/.env
+**/.env.*
+**/*.env
+**/*.env.*
+**/.npmrc
+**/.yarnrc.yml
+**/.aws
+**/.azure
+**/.ssh
+**/.docker
+**/secrets
+**/*.key
+**/*.pem
+**/*.p12
+**/*.pfx
+**/id_rsa*
+**/id_ed25519*
+**/*service-account*.json
+
+**/*.log
+**/*.tsbuildinfo
+**/*.heapsnapshot
+**/.DS_Store
+coverage
+playwright-report
+test-results
+docker-compose*.yml
+docker-compose*.yaml

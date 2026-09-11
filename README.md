@@ -14,7 +14,7 @@ AI-powered app builder. Describe what you want, get working code running live in
 
 ## Setup
 
-Requires Node 18.18+ and Docker.
+Requires Node 22 LTS (22.13 or newer), pnpm 11.18.0, and Docker.
 
 ```bash
 pnpm install
@@ -51,3 +51,11 @@ docker compose up --build
 ```
 
 Runs the app + postgres + redis. Available at `http://localhost:3000`.
+
+## Security incident recovery
+
+For RSC vulnerability patching, exposed credential rotation, and recovery of a
+compromised Azure Container App, follow the
+[security incident response runbook](docs/security-incident-response.md).
+The Compose database passwords are for local development only; production
+credentials belong in Key Vault and Container App secret bindings.

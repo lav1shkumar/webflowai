@@ -54,7 +54,10 @@ export default clerkMiddleware(async (auth, req) => {
 export const config = {
   runtime: "nodejs",
   matcher: [
-    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
-    "/(api|trpc)(.*)",
+    // Liveness must not depend on Clerk, Redis, or a shared probe rate limit.
+    // Exclude only the exact health path, including its optional trailing slash.
+    "/((?!api/health/?$|_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    "/api/((?!health/?$).*)",
+    "/trpc(.*)",
   ],
 };
