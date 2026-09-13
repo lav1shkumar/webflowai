@@ -25,6 +25,7 @@ class RedisConnection {
       },
     });
 
+    client.on("ready", () => console.log("[redis] Connected successfully"));
     client.on("error", (err) => console.error("[redis]", err?.message ?? err));
 
     this.connecting = client
