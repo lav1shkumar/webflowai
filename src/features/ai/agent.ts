@@ -93,10 +93,7 @@ After it succeeds, return a concise summary only of the code and user-visible pr
       const responses = result.messages.filter(AIMessage.isInstance);
       const last = responses.at(-1);
       return {
-        context:
-          typeof last?.content === "string"
-            ? last.content
-            : "No additional repository context was found.",
+        context: last?.text || "No additional repository context was found.",
         tokens: responses.reduce(
           (total, message) =>
             total + (message.usage_metadata?.total_tokens ?? 0),
@@ -131,13 +128,13 @@ After it succeeds, return a concise summary only of the code and user-visible pr
       const implementationResponses = state.messages.filter(
         AIMessage.isInstance,
       );
-      const implementationSummary = implementationResponses.at(-1)?.content;
+      const implementationSummary = implementationResponses.at(-1)?.text;
       const result = await runtimeAgent.invoke(
         {
           messages: [
             {
               role: "user",
-              content: `REQUEST:\n${input.prompt}\n\nGATHERED REPOSITORY CONTEXT:\n${state.context}\n\nCODING AGENT SUMMARY:\n${typeof implementationSummary === "string" ? implementationSummary : "Implementation completed."}`,
+              content: `REQUEST:\n${input.prompt}\n\nGATHERED REPOSITORY CONTEXT:\n${state.context}\n\nCODING AGENT SUMMARY:\n${implementationSummary || "Implementation completed."}`,
             },
           ],
         },
@@ -175,7 +172,6 @@ After it succeeds, return a concise summary only of the code and user-visible pr
     changes: getChanges(),
     tokens: result.tokens,
     previewUrl: getPreviewUrl()!,
-    summary:
-      typeof last?.content === "string" ? last.content : "Agent run completed.",
+    summary: last?.text || "Agent run completed.",
   };
 }

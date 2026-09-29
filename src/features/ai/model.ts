@@ -1,4 +1,4 @@
-import { AzureChatOpenAI } from "@langchain/openai";
+import { ChatOpenAI } from "@langchain/openai";
 
 export function getAgentModel(
   modelId: string | undefined = process.env.WEBFLOWAI_MODEL,
@@ -13,10 +13,14 @@ export function getAgentModel(
     throw new Error("WEBFLOWAI_MODEL must be an Azure deployment name.");
   }
 
-  return new AzureChatOpenAI(modelId, {
-    azureOpenAIApiKey: process.env.AZURE_OPENAI_API_KEY,
-    azureOpenAIApiInstanceName: process.env.AZURE_RESOURCE_NAME,
-    azureOpenAIApiVersion: process.env.AZURE_OPENAI_API_VERSION ?? "2024-10-21",
+  return new ChatOpenAI({
+    model: modelId,
+    apiKey: process.env.AZURE_OPENAI_API_KEY,
+    configuration: {
+      baseURL: `https://${process.env.AZURE_RESOURCE_NAME}.openai.azure.com/openai/v1/`,
+    },
+
+    useResponsesApi: true,
     maxRetries: 2,
   });
 }
